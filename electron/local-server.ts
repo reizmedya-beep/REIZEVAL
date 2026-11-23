@@ -3,6 +3,15 @@ import path from 'path';
 import net from 'net';
 import http from 'http';
 import crypto from 'crypto';
+import fs from 'fs';
+import { app } from 'electron';
+
+function serverLog(msg: string) {
+  try {
+    const logFile = path.join(app.getPath('userData'), 'reizeval_runtime.log');
+    fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch(e){}
+}
 
 export interface LocalServerConfig {
   port: number;
@@ -34,11 +43,16 @@ function findFreePort(): Promise<number> {
 /**
  * Polls local server until it responds or timeouts
  */
-function waitForServerReady(url: string, token: string, maxAttempts = 50): Promise<void> {
+function waitForServerReady(url: string, token: string, maxAttempts = 75): Promise<void> {
   return new Promise((resolve, reject) => {
     let attempts = 0;
     const interval = setInterval(() => {
       attempts++;
+      if (serverProcess && serverProcess.exitCode !== null) {
+        clearInterval(interval);
+        reject(new Error(`Next.js dahili sunucusu başlatılamadı (Çıkış Kodu: ${serverProcess.exitCode})`));
+        return;
+      }
       const req = http.get(url, {
         headers: { 'x-reizeval-auth': token }
       }, (res) => {
@@ -80,8 +94,12 @@ export async function startInternalServer(isDev: boolean): Promise<LocalServerCo
   const fallbackServerPath = path.join(__dirname, '..', '.next', 'standalone', 'server.js');
   
   const targetScript = require('fs').existsSync(serverPath) ? serverPath : fallbackServerPath;
+  const scriptDir = path.dirname(targetScript);
+
+  serverLog(`[Next.js Internal] Launching: ${targetScript} in ${scriptDir} on port ${port}`);
 
   serverProcess = spawn(process.execPath, [targetScript], {
+    cwd: scriptDir,
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
@@ -93,16 +111,20 @@ export async function startInternalServer(isDev: boolean): Promise<LocalServerCo
     stdio: 'pipe',
   });
 
+  serverProcess.on('error', (err) => {
+    serverLog(`[Next.js Internal Spawn Error]: ${err}`);
+  });
+
   serverProcess.stdout?.on('data', (data) => {
-    console.log(`[Next.js Internal]: ${data}`);
+    serverLog(`[Next.js stdout]: ${data}`);
   });
 
   serverProcess.stderr?.on('data', (data) => {
-    console.error(`[Next.js Internal Error]: ${data}`);
+    serverLog(`[Next.js stderr]: ${data}`);
   });
 
   serverProcess.on('exit', (code) => {
-    console.warn(`[Next.js Internal] Exited with code ${code}`);
+    serverLog(`[Next.js Internal] Exited with code ${code}`);
     serverProcess = null;
   });
 

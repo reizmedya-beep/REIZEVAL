@@ -5,11 +5,11 @@ directories:
   buildResources: public
 files:
   - "dist-electron/**/*"
-  - ".next/standalone/**/*"
-  - ".next/static/**/*"
   - "public/**/*"
   - "package.json"
 extraResources:
+  - from: ".next/standalone"
+    to: ".next/standalone"
   - from: ".next/static"
     to: ".next/standalone/.next/static"
   - from: "public"
