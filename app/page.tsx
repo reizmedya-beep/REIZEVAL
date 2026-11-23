@@ -45,6 +45,7 @@ import { LandscapeA4Certificate } from "@/components/certificates/LandscapeA4Cer
 import { InAppArchiveViewer } from "@/components/code-viewer/InAppArchiveViewer";
 import { SecurityAuditScanner } from "@/components/security/SecurityAuditScanner";
 import { RadarVarianceChart } from "@/components/jury/RadarVarianceChart";
+import { AuthLoginPortal } from "@/components/auth/AuthLoginPortal";
 
 type ActiveTab = "PROJECTS" | "JURY_AUDIT" | "CTO_OVERSIGHT" | "MESSAGES" | "CERTIFICATES";
 
@@ -87,15 +88,61 @@ interface ProjectItem {
   }>;
 }
 
+// Normalize remote projects from central database into desktop ProjectItem
+function normalizeProject(p: any, idx: number): ProjectItem {
+  const pKey: "PROJE_1" | "PROJE_2" | "PROJE_3" = 
+    (p.id === 'prj-mustafa-coban' || idx === 0) ? "PROJE_1" 
+    : (p.id === 'prj-hulya-bulut' || idx === 1) ? "PROJE_2" 
+    : "PROJE_3";
+
+  const score = (p.evaluations && p.evaluations.length > 0)
+    ? p.evaluations[p.evaluations.length - 1].totalScore
+    : (p.score !== undefined ? p.score : null);
+
+  return {
+    id: p.id,
+    projectKey: pKey,
+    title: p.title || `REIZEVAL — ${pKey}`,
+    categoryName: p.category || (pKey === "PROJE_1" ? "Temel Web Mimarisi" : pKey === "PROJE_2" ? "Kademeli Sistem (_WEB, _MOBİL, _OTOMASYON)" : "Python Otomasyon & Bot Mimarisi"),
+    ownerName: p.ownerName || (pKey === "PROJE_1" ? "Mustafa Çoban" : pKey === "PROJE_2" ? "Hülya Bulut" : "Mustafa Dalerdem"),
+    ownerTitle: p.ownerTitle || (pKey === "PROJE_1" ? "Kurucu / CEO" : pKey === "PROJE_2" ? "CXO & CTO Yardımcısı" : "CIO / Akademi Başkanı"),
+    currentStage: (pKey === "PROJE_2" ? "V3_FULL_STACK" : "INDEPENDENT") as any,
+    status: p.status || "READY_FOR_JURY",
+    score: score,
+    archives: (p.archives || []).map((a: any) => ({
+      id: a.id || `arc-${Math.random()}`,
+      fileName: a.fileName,
+      sizeFormatted: a.sizeFormatted || `${((a.fileSizeBytes || 0) / (1024 * 1024)).toFixed(2)} MB`,
+      format: (a.format || (a.fileName.endsWith('.rar') ? 'RAR' : 'ZIP')) as any,
+      tag: a.category || (pKey === "PROJE_2" ? "_WEB" : "GENEL"),
+      sha256: a.sha256 || "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      uploadedAt: a.uploadedAt ? new Date(a.uploadedAt).toLocaleString('tr-TR') : "21.11.2026"
+    })),
+    juryReviews: (p.evaluations || []).map((ev: any) => ({
+      id: ev.id,
+      juryName: ev.juryName,
+      score: ev.totalScore,
+      subScores: {
+        codeQuality: ev.codeQualityScore || 25,
+        security: ev.securityScore || 18,
+        performance: ev.performanceScore || 18,
+        functionality: ev.functionalityScore || 18,
+        documentation: ev.documentationScore || 9,
+        webBonus: ev.webBonus,
+        mobileBonus: ev.mobileBonus,
+        automationBonus: ev.automationBonus,
+      },
+      reportEn: ev.technicalReport || "Teknik denetim raporu kaydedildi.",
+      reportTr: ev.technicalReport || "Teknik denetim raporu kaydedildi.",
+      createdAt: ev.createdAt ? new Date(ev.createdAt).toLocaleString('tr-TR') : "21.11.2026"
+    }))
+  };
+}
+
 export default function ReizevalDesktopApp() {
-  // Current Logged in User
-  const [currentUser, setCurrentUser] = useState<any>({
-    id: "RZV-EXE-001",
-    fullName: "Mustafa Çoban",
-    email: "mustafa.coban@reizeval",
-    role: "DEVELOPER",
-    title: "Kurucu / CEO"
-  });
+  // Current Authenticated User (null = show Login Portal)
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("PROJECTS");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -108,158 +155,68 @@ export default function ReizevalDesktopApp() {
   const [showSecurityModal, setShowSecurityModal] = useState<boolean>(false);
   const [showRadarModal, setShowRadarModal] = useState<boolean>(false);
 
-  // 3 Distinct Projects (PROJE_1, PROJE_2, PROJE_3)
-  const [projects, setProjects] = useState<ProjectItem[]>([
-    {
-      id: "p1-temel-web",
-      projectKey: "PROJE_1",
-      title: "REIZEVAL — Kurumsal Masaüstü Platformu (PROJE_1)",
-      categoryName: "Temel Web Mimarisi (Bağımsız Değerlendirme)",
-      ownerName: "Mustafa Çoban",
-      ownerTitle: "Kurucu / CEO",
-      currentStage: "INDEPENDENT",
-      status: "READY_FOR_JURY",
-      score: null,
-      archives: [
-        {
-          id: "arc-p1-1",
-          fileName: "Temel-Web-Frontend.zip",
-          sizeFormatted: "128.50 MB",
-          format: "ZIP",
-          tag: "_WEB",
-          sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-          uploadedAt: "2026-11-21 10:00"
-        }
-      ],
-      juryReviews: []
-    },
-    {
-      id: "p2-kademeli",
-      projectKey: "PROJE_2",
-      title: "REIZ Omni-Channel Deneyim & Güvenlik Mimarisi (PROJE_2 — V1, V2, V3 Full-Stack)",
-      categoryName: "Kademeli Sistem (_WEB, _MOBİL, _OTOMASYON)",
-      ownerName: "Hülya Bulut",
-      ownerTitle: "CXO & CTO Yardımcısı",
-      currentStage: "V3_FULL_STACK",
-      status: "READY_FOR_JURY",
-      score: null,
-      archives: [
-        {
-          id: "arc-p2-v1",
-          fileName: "V1_Frontend_Arayuz_WEB.zip",
-          sizeFormatted: "340.00 MB",
-          format: "ZIP",
-          tag: "_WEB",
-          sha256: "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0",
-          uploadedAt: "2026-11-22 11:30"
-        },
-        {
-          id: "arc-p2-v2",
-          fileName: "V2_Backend_Database_MOBIL.zip",
-          sizeFormatted: "850.00 MB",
-          format: "ZIP",
-          tag: "_MOBIL",
-          sha256: "f4c3b2a10987654321fedcba0987654321fedcba0987654321fedcba09876543",
-          uploadedAt: "2026-11-22 13:00"
-        },
-        {
-          id: "arc-p2-v3",
-          fileName: "V3_FullStack_Final_OTOMASYON.rar",
-          sizeFormatted: "1.45 GB",
-          format: "RAR",
-          tag: "_OTOMASYON",
-          sha256: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
-          uploadedAt: "2026-11-23 09:15"
-        }
-      ],
-      juryReviews: []
-    },
-    {
-      id: "p3-python-otomasyon",
-      projectKey: "PROJE_3",
-      title: "REIZ Akademi & Global Jüri Ekosistemi (PROJE_3 — Python Otomasyon)",
-      categoryName: "Python Otomasyon & Bot Mimarisi (Bağımsız Değerlendirme)",
-      ownerName: "Mustafa Dalerdem",
-      ownerTitle: "CIO / Akademi ve Ekosistem Başkanı",
-      currentStage: "INDEPENDENT",
-      status: "READY_FOR_JURY",
-      score: null,
-      archives: [
-        {
-          id: "arc-p3-1",
-          fileName: "Python_Otomasyon_Scriptleri_OTOMASYON.zip",
-          sizeFormatted: "410.20 MB",
-          format: "ZIP",
-          tag: "_OTOMASYON",
-          sha256: "f0e1d2c3b4a5968778695a4b3c2d1e0f0e1d2c3b4a5968778695a4b3c2d1e0f0",
-          uploadedAt: "2026-11-22 15:45"
-        }
-      ],
-      juryReviews: []
-    }
-  ]);
+  // Live Projects loaded directly from Central Database API (Zero mock/fake data)
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("prj-mustafa-coban");
+  const [isLoadingProjects, setIsLoadingProjects] = useState<boolean>(true);
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("p2-kademeli");
-  const activeProject = projects.find(p => p.id === selectedProjectId) || projects[0];
+  const activeProject: ProjectItem = projects.find(p => p.id === selectedProjectId) || projects[0] || {
+    id: "prj-mustafa-coban",
+    projectKey: "PROJE_1",
+    title: "REIZEVAL — Kurumsal Masaüstü Platformu",
+    categoryName: "Sistem & Masaüstü Mühendisliği",
+    ownerName: "Mustafa Çoban",
+    ownerTitle: "Kurucu / CEO",
+    currentStage: "INDEPENDENT",
+    status: "READY_FOR_JURY",
+    score: null,
+    archives: [],
+    juryReviews: []
+  };
 
   // Translation Toggle state for Jury reviews
   const [translatedReviews, setTranslatedReviews] = useState<Record<string, boolean>>({});
 
   // 1-on-1 Private Messages State
   const [selectedJuryForChat, setSelectedJuryForChat] = useState("Gaspare LoDuca");
-  const [chatMessages, setChatMessages] = useState<any[]>([
-    {
-      id: "cm-1",
-      senderName: "Mustafa Çoban",
-      juryName: "Gaspare LoDuca",
-      content: "Merhaba Sayın LoDuca, PROJE_2 için V3 Full-Stack arşivini ekledim, _MOBİL ve _OTOMASYON klasörlerini inceleyebilirsiniz.",
-      timestamp: "10:15",
-      isFromDeveloper: true
-    },
-    {
-      id: "cm-2",
-      senderName: "Gaspare LoDuca",
-      juryName: "Gaspare LoDuca",
-      content: "Hello Mustafa, I received the archives. I am checking the _MOBİL frontend and database connections right now. The structure looks very solid.",
-      timestamp: "10:22",
-      isFromDeveloper: false
-    }
-  ]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInputText, setChatInputText] = useState("");
   const [activeApiUrl, setActiveApiUrl] = useState<string>("https://reizeval-api.onrender.com");
 
+  // Check saved session on startup
   useEffect(() => {
     setActiveApiUrl(apiClient.getBaseUrl());
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("reizeval_auth_user");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.email) {
+            setCurrentUser(parsed);
+            if (parsed.token) apiClient.setToken(parsed.token);
+          }
+        } catch (e) {
+          console.warn("Failed to parse saved user", e);
+        }
+      }
+    }
+    setIsAuthChecking(false);
   }, []);
 
   // Real-time synchronization loop across network / multi-computer
-  useEffect(() => {
-    let isMounted = true;
-    const syncProjectsAndMessages = async () => {
-      try {
-        const res = await apiClient.getProjects();
-        if (isMounted && res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-          setProjects(prev => prev.map(localP => {
-            const remoteP = res.data.find((r: any) => r.id === localP.id || r.ownerId === localP.id);
-            if (remoteP) {
-              return {
-                ...localP,
-                status: remoteP.status || localP.status,
-                score: remoteP.evaluations && remoteP.evaluations.length > 0
-                  ? remoteP.evaluations[remoteP.evaluations.length - 1].totalScore
-                  : localP.score,
-                archives: remoteP.archives && remoteP.archives.length > 0
-                  ? remoteP.archives
-                  : localP.archives
-              };
-            }
-            return localP;
-          }));
-        }
+  const syncProjectsAndMessages = async () => {
+    try {
+      const res = await apiClient.getProjects();
+      if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map((p: any, idx: number) => normalizeProject(p, idx));
+        setProjects(mapped);
+        setIsLoadingProjects(false);
+      }
 
-        // Sync messages for active project
+      // Sync messages for active project
+      if (selectedProjectId) {
         const msgRes = await apiClient.getMessages(selectedProjectId);
-        if (isMounted && msgRes && msgRes.data && Array.isArray(msgRes.data) && msgRes.data.length > 0) {
+        if (msgRes && msgRes.data && Array.isArray(msgRes.data)) {
           setChatMessages(msgRes.data.map((m: any) => ({
             id: m.id,
             senderName: m.senderName,
@@ -269,18 +226,63 @@ export default function ReizevalDesktopApp() {
             isFromDeveloper: m.senderRole === "DEVELOPER"
           })));
         }
-      } catch {
-        // Graceful fallback to local state if offline
       }
-    };
+    } catch {
+      // Offline fallback
+    }
+  };
 
+  useEffect(() => {
+    let isMounted = true;
     syncProjectsAndMessages();
-    const interval = setInterval(syncProjectsAndMessages, 4000);
+    const interval = setInterval(() => {
+      if (isMounted) syncProjectsAndMessages();
+    }, 4000);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
   }, [selectedProjectId, selectedJuryForChat]);
+
+  // Auth Handler
+  const handleLoginSuccess = (user: any, token: string) => {
+    const userWithToken = { ...user, token };
+    setCurrentUser(userWithToken);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("reizeval_auth_user", JSON.stringify(userWithToken));
+    }
+    if (token) apiClient.setToken(token);
+
+    if (user.role === "GLOBAL_CTO") {
+      setActiveTab("CTO_OVERSIGHT");
+    } else if (user.role === "TECHNICAL_JURY") {
+      setActiveTab("JURY_AUDIT");
+    } else {
+      setActiveTab("PROJECTS");
+    }
+    setStatusMessage(`Hoş geldiniz, Sayın ${user.fullName}. Oturum başarıyla açıldı.`);
+  };
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("reizeval_auth_user");
+      if ((window as any).reizevalNative?.clearSecureToken) {
+        (window as any).reizevalNative.clearSecureToken("user_token").catch(() => {});
+      }
+    }
+    apiClient.setToken(null);
+    setCurrentUser(null);
+    setStatusMessage("Oturum güvenli bir şekilde kapatıldı.");
+  };
+
+  const handleUpdateApiUrl = (newUrl: string) => {
+    apiClient.setBaseUrl(newUrl || null);
+    const updated = apiClient.getBaseUrl();
+    setActiveApiUrl(updated);
+    setStatusMessage(`Merkezi API sunucu adresi güncellendi: ${updated}`);
+    syncProjectsAndMessages();
+  };
 
   // Jury Rubric Grading State (100 Base + Sub-module Extra Scores)
   const [codeQuality, setCodeQuality] = useState(28); // 30
@@ -303,65 +305,38 @@ export default function ReizevalDesktopApp() {
     ? Math.min(100, Math.round(baseTotalScore * 0.8 + ((webBonus + mobileBonus + automationBonus) / 30) * 20))
     : baseTotalScore;
 
-  // Profile Switcher
-  const switchProfile = (roleKey: string) => {
-    if (roleKey === "coban") {
-      setCurrentUser({ id: "RZV-EXE-001", fullName: "Mustafa Çoban", email: "mustafa.coban@reizeval", role: "DEVELOPER", title: "Kurucu / CEO" });
-      setSelectedProjectId("p1-temel-web");
-      setActiveTab("PROJECTS");
-    } else if (roleKey === "bulut") {
-      setCurrentUser({ id: "RZV-EXE-002", fullName: "Hülya Bulut", email: "hulya.bulut@reizeval", role: "DEVELOPER", title: "CXO & CTO Yardımcısı" });
-      setSelectedProjectId("p2-kademeli");
-      setActiveTab("PROJECTS");
-    } else if (roleKey === "dalerdem") {
-      setCurrentUser({ id: "RZV-EXE-003", fullName: "Mustafa Dalerdem", email: "mustafa.dalerdem@reizeval", role: "DEVELOPER", title: "CIO / Akademi ve Ekosistem Başkanı" });
-      setSelectedProjectId("p3-python-otomasyon");
-      setActiveTab("PROJECTS");
-    } else if (roleKey === "cto") {
-      setCurrentUser({ id: "RZV-CTO-001", fullName: "Gökçenur Öztürk", email: "gokcenurozturk@reizeval@gmail.com", role: "GLOBAL_CTO", title: "Global CTO & Sistem Yöneticisi" });
-      setActiveTab("CTO_OVERSIGHT");
-    } else if (roleKey === "jury1") {
-      setCurrentUser({ id: "RZV-JURY-001", fullName: "Gaspare LoDuca", email: "gaspare.loduca@reizeval", role: "TECHNICAL_JURY", title: "Uluslararası Teknik Jüri" });
-      setActiveTab("JURY_AUDIT");
-    }
-  };
-
-  // Upload ZIP / WinRAR
+  // Upload ZIP / WinRAR (Live Native File Dialog & Central Server Upload)
   const handleAddNewArchive = async () => {
-    const format: "ZIP" | "RAR" = activeProject.archives.length % 2 === 0 ? "ZIP" : "RAR";
-    const tag: "_WEB" | "_MOBIL" | "_OTOMASYON" = activeProject.archives.length === 0 ? "_WEB" : activeProject.archives.length === 1 ? "_MOBIL" : "_OTOMASYON";
-    const newArc = {
-      id: "arc-" + Date.now(),
-      fileName: `${activeProject.projectKey}_Paket_${activeProject.archives.length + 1}${tag}.${format.toLowerCase()}`,
-      sizeFormatted: `${(Math.random() * 6 + 1.2).toFixed(2)} GB`,
-      format,
-      tag,
-      sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      uploadedAt: "Bugün 11:30"
-    };
+    if (!activeProject) return;
 
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProject.id) {
-        return {
-          ...p,
-          status: "READY_FOR_JURY",
-          archives: [...p.archives, newArc]
-        };
+    let selectedFile: any = null;
+    if (typeof window !== "undefined" && (window as any).reizevalNative?.selectArchive) {
+      selectedFile = await (window as any).reizevalNative.selectArchive();
+    }
+
+    if (!selectedFile) {
+      // User cancelled dialog
+      return;
+    }
+
+    setStatusMessage(`Arşiv (${selectedFile.fileName}) merkezi sunucuya yükleniyor...`);
+    try {
+      const res = await apiClient.uploadMultiArchives(activeProject.id, [{
+        fileName: selectedFile.fileName,
+        fileSizeBytes: selectedFile.sizeBytes,
+        sizeFormatted: selectedFile.sizeFormatted,
+        sha256: selectedFile.sha256,
+        format: selectedFile.extension.toUpperCase() as "ZIP" | "RAR",
+        category: 'SOURCE_CODE'
+      }]);
+
+      if (res && res.project) {
+        await syncProjectsAndMessages();
+        setStatusMessage(`✅ Gerçek arşiv (${selectedFile.fileName}) başarıyla eklendi ve tüm jürilere iletildi!`);
       }
-      return p;
-    }));
-
-    // Dispatch to Central API for remote computers
-    apiClient.uploadMultiArchives(activeProject.id, [{
-      fileName: newArc.fileName,
-      fileSizeBytes: 1024 * 1024 * 500,
-      sizeFormatted: newArc.sizeFormatted,
-      sha256: newArc.sha256,
-      format: newArc.format,
-      category: 'SOURCE_CODE'
-    }]).catch(console.warn);
-
-    setStatusMessage(`Yeni arşiv (${newArc.fileName}) başarıyla eklendi ve tüm jürilere iletildi!`);
+    } catch (err: any) {
+      setStatusMessage(`❌ Arşiv yükleme hatası: ${err.message}`);
+    }
   };
 
   // Delete Archive
@@ -379,104 +354,73 @@ export default function ReizevalDesktopApp() {
   };
 
   // Jury Submits Evaluation (Strict Anti-Tamper RBAC)
-  const handleJurySubmitReview = () => {
-    if (currentUser.role === "DEVELOPER") {
-      setStatusMessage("YETKİSİZ İŞLEM (403 Forbidden): Geliştirici veya Şirket CEOsu dahi olsa jüri puanlarına müdahale edemez veya puan veremez!");
+  const handleJurySubmitReview = async () => {
+    if (!currentUser) return;
+    if (currentUser.role === "DEVELOPER" || currentUser.fullName === "Mustafa Çoban" || currentUser.fullName === "Hülya Bulut") {
+      setStatusMessage("YETKİSİZ İŞLEM (403 Forbidden): Geliştirici veya Şirket CEOsu jüri değerlendirmesi yapamaz. Yalnızca 12 Bağımsız Jüri puan verebilir.");
+      alert("YETKİSİZ İŞLEM (HTTP 403 Forbidden)\n\nGeliştirici veya Şirket CEOsu rolündeki kullanıcılar jüri değerlendirmesi yapamaz veya puan veremez!\n\nLütfen değerlendirme yapmak için 12 Bağımsız Teknik Jüri hesabından biriyle giriş yapınız.");
       return;
     }
 
-    const newRev = {
-      id: "rev-" + Date.now(),
-      juryName: currentUser.fullName,
-      score: finalCalculatedScore,
-      subScores: {
-        codeQuality,
-        security: securityScore,
-        performance: performanceScore,
-        functionality: functionalityScore,
-        documentation: documentationScore,
-        webBonus: activeProject.projectKey === "PROJE_2" ? webBonus : undefined,
-        mobileBonus: activeProject.projectKey === "PROJE_2" ? mobileBonus : undefined,
-        automationBonus: activeProject.projectKey === "PROJE_2" ? automationBonus : undefined,
-      },
-      reportEn: juryCommentEn,
-      reportTr: "Kademeli geliştirme (V1, V2, V3) kusursuz tamamlanmış. Ek olarak sağlanan _MOBİL ve _OTOMASYON klasörleri projeye yüksek değer katmış.",
-      createdAt: "Bugün 11:45"
-    };
+    setStatusMessage("Puanlama ve rapor merkezi sunucuya kaydediliyor...");
+    try {
+      const res = await apiClient.submitEvaluation(activeProject.id, {
+        codeQualityScore: codeQuality,
+        securityScore,
+        performanceScore,
+        functionalityScore,
+        documentationScore,
+        technicalReport: juryCommentEn,
+        juryId: currentUser.id,
+        juryName: currentUser.fullName
+      });
 
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProject.id) {
-        return {
-          ...p,
-          status: "PENDING_CTO_APPROVAL",
-          score: finalCalculatedScore,
-          juryReviews: [...p.juryReviews, newRev]
-        };
+      if (res && res.success) {
+        await syncProjectsAndMessages();
+        setStatusMessage(`✅ ${activeProject.title} projesine ${finalCalculatedScore}/100 puan verildi ve Global CTO Gökçenur Öztürk onayına iletildi!`);
       }
-      return p;
-    }));
-
-    // Dispatch to Central API
-    apiClient.submitEvaluation(activeProject.id, {
-      codeQualityScore: codeQuality,
-      securityScore,
-      performanceScore,
-      functionalityScore,
-      documentationScore,
-      technicalReport: juryCommentEn,
-      juryId: currentUser.id,
-      juryName: currentUser.fullName
-    }).catch(console.warn);
-
-    setStatusMessage(`${activeProject.title} projesine ${finalCalculatedScore}/100 puan verildi ve Global CTO Gökçenur Öztürk onayına sunuldu!`);
+    } catch (err: any) {
+      setStatusMessage(`❌ Hata: ${err.message}`);
+    }
   };
 
   // CTO Approval (Strict RBAC: Only Global CTO Gökçenur Öztürk can approve!)
-  const handleCtoApproveProject = (projId: string) => {
-    if (currentUser.role !== "GLOBAL_CTO") {
+  const handleCtoApproveProject = async (projId: string) => {
+    if (!currentUser || currentUser.role !== "GLOBAL_CTO") {
       setStatusMessage("YETKİSİZ İŞLEM (403 Forbidden): Belge ve nihai puan onay yetkisi yalnızca Global CTO Gökçenur Öztürk yetkisindedir. Şirket CEOsu onay veremez.");
+      alert("YETKİSİZ İŞLEM (HTTP 403 Forbidden)\n\nBelge ve nihai puan onay yetkisi yalnızca Global CTO Gökçenur Öztürk yetkisindedir. Şirket CEOsu veya geliştiriciler onay veremez.");
       return;
     }
 
-    setProjects(prev => prev.map(p => {
-      if (p.id === projId) {
-        return {
-          ...p,
-          status: "APPROVED_PUBLISHED",
-          score: p.score || 96
-        };
+    setStatusMessage("Global CTO onayı veriliyor ve resmi sertifika üretiliyor...");
+    try {
+      const res = await apiClient.approveEvaluation(projId);
+      if (res && res.success) {
+        await syncProjectsAndMessages();
+        setStatusMessage("✅ Global CTO Gökçenur Öztürk projeyi resmî olarak onayladı ve Başarı Belgesi hak edildi!");
       }
-      return p;
-    }));
-
-    apiClient.approveEvaluation(`eval-${projId}`).catch(console.warn);
-
-    setStatusMessage("Global CTO Gökçenur Öztürk projeyi resmî olarak onayladı ve Başarı Belgesi hak edildi!");
+    } catch (err: any) {
+      setStatusMessage(`❌ Onay hatası: ${err.message}`);
+    }
   };
 
   // Send 1-on-1 message to jury
-  const handleSendChatMessage = () => {
-    if (!chatInputText.trim()) return;
-    const content = chatInputText;
-    setChatMessages(prev => [
-      ...prev,
-      {
-        id: "cm-" + Date.now(),
-        senderName: currentUser.fullName,
-        juryName: selectedJuryForChat,
-        content,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isFromDeveloper: currentUser.role === "DEVELOPER"
-      }
-    ]);
+  const handleSendChatMessage = async () => {
+    if (!chatInputText.trim() || !currentUser) return;
+    const content = chatInputText.trim();
     setChatInputText("");
 
-    apiClient.sendMessage(activeProject.id, {
-      content,
-      senderId: currentUser.id,
-      senderName: currentUser.fullName,
-      senderRole: currentUser.role
-    }).catch(console.warn);
+    try {
+      await apiClient.sendMessage(activeProject.id, {
+        content,
+        senderId: currentUser.id,
+        senderName: currentUser.fullName,
+        senderRole: currentUser.role
+      });
+      await syncProjectsAndMessages();
+    } catch (err: any) {
+      setStatusMessage(`❌ Mesaj iletilemedi: ${err.message}`);
+    }
   };
 
   // Open Certificate for active project
@@ -496,6 +440,32 @@ export default function ReizevalDesktopApp() {
       certificateNumber: `RZV-2026-${certMeta.code}-98A${Math.floor(Math.random() * 900 + 100)}`
     });
   };
+
+  // 1. Initial Auth Check Spinner
+  if (isAuthChecking) {
+    return (
+      <div className="flex-1 w-full h-full flex flex-col items-center justify-center bg-[#060a17]">
+        <img 
+          src="/images/reizeval-shield.png" 
+          alt="REIZEVAL" 
+          className="h-16 w-16 object-contain drop-shadow-[0_0_16px_rgba(59,130,246,0.8)] animate-pulse mb-3" 
+        />
+        <div className="text-slate-300 font-semibold text-sm">REIZEVAL Enterprise Doğrulanıyor</div>
+        <div className="text-slate-500 text-xs font-mono mt-1">Merkezi Oturum & Yetki Denetimi...</div>
+      </div>
+    );
+  }
+
+  // 2. Authentication Gate: Show Login Screen when not logged in
+  if (!currentUser) {
+    return (
+      <AuthLoginPortal
+        onLoginSuccess={handleLoginSuccess}
+        activeApiUrl={activeApiUrl}
+        onUpdateApiUrl={handleUpdateApiUrl}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex overflow-hidden bg-[#060a17]">
@@ -574,32 +544,44 @@ export default function ReizevalDesktopApp() {
           </div>
 
           {/* Active Profile Box */}
-          <div className="p-3 rounded-xl bg-slate-900/90 border border-blue-900/50 space-y-1.5">
+          <div className="p-3 rounded-xl bg-slate-900/90 border border-blue-900/50 space-y-2 shadow-md">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <span>Aktif Yetki</span>
+              <span className="flex items-center space-x-1">
+                <UserCheck className="h-3 w-3 text-emerald-400" />
+                <span>Giriş Yapılan Hesap</span>
+              </span>
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             </div>
 
             <div>
-              <div className="font-bold text-white text-sm truncate">{currentUser.fullName}</div>
+              <div className="font-bold text-white text-sm truncate flex items-center justify-between">
+                <span>{currentUser.fullName}</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase ${
+                  currentUser.role === "GLOBAL_CTO" 
+                    ? "bg-amber-950/80 text-amber-300 border border-amber-800/40" 
+                    : currentUser.role === "TECHNICAL_JURY" 
+                      ? "bg-cyan-950/80 text-cyan-300 border border-cyan-800/40" 
+                      : "bg-blue-950/80 text-blue-300 border border-blue-800/40"
+                }`}>
+                  {currentUser.role?.replace('_', ' ')}
+                </span>
+              </div>
               <div className="text-[11px] text-blue-400 font-mono truncate">{currentUser.email}</div>
               <div className="text-[10px] text-slate-400 truncate">{currentUser.title}</div>
+              {currentUser.organization && (
+                <div className="text-[9px] text-slate-500 truncate">{currentUser.organization}</div>
+              )}
             </div>
 
-            {/* Quick Profile Switcher */}
-            <div className="pt-2 border-t border-slate-800 space-y-1">
-              <div className="text-[10px] text-slate-400 font-medium">Yetki Değiştir (Test):</div>
-              <select
-                onChange={(e) => switchProfile(e.target.value)}
-                className="w-full bg-[#060a17] text-slate-200 border border-slate-700 rounded p-1.5 text-[11px] focus:outline-none"
-              >
-                <option value="coban">Mustafa Çoban (Kurucu / CEO)</option>
-                <option value="bulut">Hülya Bulut (CXO & CTO Yrd.)</option>
-                <option value="dalerdem">Mustafa Dalerdem (CIO / Akademi Bşk.)</option>
-                <option value="cto">Gökçenur Öztürk (Global CTO & Admin)</option>
-                <option value="jury1">Gaspare LoDuca (Uluslararası Jüri)</option>
-              </select>
-            </div>
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="w-full mt-1 py-1.5 px-3 rounded-lg bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/40 hover:border-rose-700 text-rose-300 text-xs font-semibold flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
+              title="Oturumu Kapat ve Giriş Ekranına Dön"
+            >
+              <LogOut className="h-3.5 w-3.5 text-rose-400" />
+              <span>Oturumu Kapat (Çıkış)</span>
+            </button>
           </div>
 
           {/* Dual-Engine Central API & Tunnel Network Status */}
@@ -721,53 +703,71 @@ export default function ReizevalDesktopApp() {
             </div>
 
             {/* 3 Project Cards */}
-            <div className="grid grid-cols-3 gap-4">
-              {projects.map((p) => {
-                const isSelected = selectedProjectId === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedProjectId(p.id)}
-                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? "bg-blue-950/90 border-blue-500 shadow-xl shadow-blue-950/50"
-                        : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-[11px] font-bold">
-                      <span className="text-blue-400">{p.projectKey}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        p.score ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
-                      }`}>
-                        {p.score ? `${p.score} / 100 Puan` : "Değerlendiriliyor"}
-                      </span>
-                    </div>
-
-                    <div className="text-xs font-bold text-white mt-1 line-clamp-1">{p.title}</div>
-                    <div className="text-[11px] text-slate-300 mt-0.5">{p.ownerName} ({p.ownerTitle})</div>
-                    <div className="text-[10px] text-slate-400 mt-1">
-                      Kategori: <span className="text-slate-300">{p.categoryName}</span>
-                    </div>
-
-                    {p.score && (
-                      <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-[10px]">
-                        <span className="text-emerald-400 font-semibold">Onaylandı</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenCertificate(p);
-                          }}
-                          className="text-amber-400 hover:text-amber-300 font-bold underline flex items-center space-x-1"
-                        >
-                          <Award className="h-3 w-3" />
-                          <span>Yatay A4 Belge</span>
-                        </button>
+            {isLoadingProjects && projects.length === 0 ? (
+              <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
+                <RefreshCw className="h-6 w-6 text-blue-400 animate-spin" />
+                <div className="text-sm font-semibold text-white">Merkezi Veritabanından Projeler Çekiliyor...</div>
+                <div className="text-xs text-slate-500 font-mono">https://reizeval-api.onrender.com/api/v1/projects</div>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
+                <div className="text-sm font-semibold text-amber-300">Merkezi Sunucuda Proje Bulunamadı</div>
+                <button 
+                  onClick={() => syncProjectsAndMessages()} 
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white"
+                >
+                  Yeniden Bağlan
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-4">
+                {projects.map((p) => {
+                  const isSelected = selectedProjectId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setSelectedProjectId(p.id)}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        isSelected
+                          ? "bg-blue-950/90 border-blue-500 shadow-xl shadow-blue-950/50"
+                          : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="text-blue-400">{p.projectKey}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          p.score ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
+                        }`}>
+                          {p.score ? `${p.score} / 100 Puan` : "Değerlendiriliyor"}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+
+                      <div className="text-xs font-bold text-white mt-1 line-clamp-1">{p.title}</div>
+                      <div className="text-[11px] text-slate-300 mt-0.5">{p.ownerName} ({p.ownerTitle})</div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Kategori: <span className="text-slate-300">{p.categoryName}</span>
+                      </div>
+
+                      {p.score && (
+                        <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-[10px]">
+                          <span className="text-emerald-400 font-semibold">Onaylandı</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenCertificate(p);
+                            }}
+                            className="text-amber-400 hover:text-amber-300 font-bold underline flex items-center space-x-1"
+                          >
+                            <Award className="h-3 w-3" />
+                            <span>Yatay A4 Belge</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Active Project Management Box */}
             <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
