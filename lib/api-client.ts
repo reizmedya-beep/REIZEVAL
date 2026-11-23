@@ -103,7 +103,7 @@ class ReizevalApiClient {
     });
   }
 
-  // Jury Evaluation (100 pts)
+  // Jury Evaluation (100 pts + Sub-module bonuses)
   async submitEvaluation(projectId: string, rubric: {
     codeQualityScore: number;
     securityScore: number;
@@ -113,6 +113,9 @@ class ReizevalApiClient {
     technicalReport: string;
     juryId?: string;
     juryName?: string;
+    webBonus?: number;
+    mobileBonus?: number;
+    automationBonus?: number;
     revisionRequested?: boolean;
     revisionDetails?: string;
   }) {
@@ -129,6 +132,20 @@ class ReizevalApiClient {
     });
   }
 
+  // Global CTO Revoke Approval (Onayı Geri Al)
+  async revokeApproval(projectIdOrEvalId: string) {
+    return this.request<{ success: boolean; project: any; message?: string }>(`/api/v1/evaluations/${projectIdOrEvalId}/cto-revoke`, {
+      method: 'POST',
+    });
+  }
+
+  // Global CTO Reset Evaluations (Değerlendirmeleri Sıfırla)
+  async resetEvaluations(projectId: string) {
+    return this.request<{ success: boolean; project: any; message?: string }>(`/api/v1/projects/${projectId}/evaluations/reset`, {
+      method: 'POST',
+    });
+  }
+
   // Certificates
   async getCertificates() {
     return this.request<{ success: boolean; data: any[] }>('/api/v1/certificates');
@@ -139,7 +156,14 @@ class ReizevalApiClient {
     return this.request<{ success: boolean; data: any[] }>(`/api/v1/projects/${projectId}/messages`);
   }
 
-  async sendMessage(projectId: string, message: { content: string; senderId?: string; senderName: string; senderRole: string }) {
+  async sendMessage(projectId: string, message: { 
+    content: string; 
+    senderId?: string; 
+    senderName: string; 
+    senderRole: string;
+    recipientId?: string;
+    recipientName?: string;
+  }) {
     return this.request<{ success: boolean; message: any }>(`/api/v1/projects/${projectId}/messages`, {
       method: 'POST',
       body: JSON.stringify(message),

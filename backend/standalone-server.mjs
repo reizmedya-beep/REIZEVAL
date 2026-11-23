@@ -395,12 +395,15 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 403, { error: 'Çıkar Çatışması Engeli: Kendi projenize puan veremezsiniz.' });
     }
 
-    const code = Number(body.codeQualityScore) || 25;
-    const sec = Number(body.securityScore) || 18;
-    const perf = Number(body.performanceScore) || 18;
-    const func = Number(body.functionalityScore) || 18;
-    const doc = Number(body.documentationScore) || 9;
-    const total = Math.min(100, Math.max(0, code + sec + perf + func + doc));
+    const code = Number(body.codeQualityScore) || 0;
+    const sec = Number(body.securityScore) || 0;
+    const perf = Number(body.performanceScore) || 0;
+    const func = Number(body.functionalityScore) || 0;
+    const doc = Number(body.documentationScore) || 0;
+    const webBonus = Number(body.webBonus) || 0;
+    const mobileBonus = Number(body.mobileBonus) || 0;
+    const automationBonus = Number(body.automationBonus) || 0;
+    const total = Math.min(100, Math.max(0, code + sec + perf + func + doc + webBonus + mobileBonus + automationBonus));
 
     const evalEntity = {
       id: 'eval-' + crypto.randomBytes(4).toString('hex'),
@@ -412,6 +415,9 @@ const server = http.createServer(async (req, res) => {
       performanceScore: perf,
       functionalityScore: func,
       documentationScore: doc,
+      webBonus,
+      mobileBonus,
+      automationBonus,
       totalScore: total,
       technicalReport: body.technicalReport || 'Teknik denetim tamamlandı.',
       revisionRequested: !!body.revisionRequested,
@@ -423,6 +429,7 @@ const server = http.createServer(async (req, res) => {
     project.evaluations = project.evaluations || [];
     project.evaluations.push(evalEntity);
     project.status = 'PENDING_CTO_APPROVAL';
+    project.score = Math.round(project.evaluations.reduce((sum, e) => sum + e.totalScore, 0) / project.evaluations.length);
     persistToDisk();
 
     return sendJson(res, 200, { success: true, evaluation: evalEntity, project });
@@ -492,6 +499,62 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  // 8.1 Global CTO Revoke Approval (Geri Al / İncelemeye Döndür)
+  if (pathname.includes('/cto-revoke') && req.method === 'POST') {
+    const parts = pathname.split('/');
+    const targetId = parts[4]; // evaluationId or projectId
+
+    let targetProject = projects.get(targetId);
+    if (!targetProject) {
+      for (const p of projects.values()) {
+        if (p.evaluations && (p.id === targetId || p.evaluations.some(e => e.id === targetId))) {
+          targetProject = p;
+          break;
+        }
+      }
+    }
+
+    if (!targetProject) {
+      targetProject = Array.from(projects.values())[0];
+    }
+
+    if (targetProject) {
+      targetProject.status = (targetProject.evaluations && targetProject.evaluations.length > 0) ? 'PENDING_CTO_APPROVAL' : 'READY_FOR_JURY';
+      if (targetProject.evaluations) {
+        targetProject.evaluations.forEach(e => { e.isApprovedByCto = false; });
+      }
+      // Remove any generated certificates for this project
+      for (const [k, c] of certificates.entries()) {
+        if (c.projectId === targetProject.id) {
+          certificates.delete(k);
+        }
+      }
+      persistToDisk();
+      return sendJson(res, 200, { success: true, project: targetProject, message: 'Global CTO onayı başarıyla geri alındı.' });
+    }
+
+    return sendJson(res, 404, { error: 'Proje bulunamadı' });
+  }
+
+  // 8.2 Global CTO Reset/Clear Evaluations (Değerlendirmeleri Sıfırla)
+  if (pathname.includes('/evaluations/reset') && req.method === 'POST') {
+    const parts = pathname.split('/');
+    const projectId = parts[4];
+    const project = projects.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Proje bulunamadı' });
+
+    project.evaluations = [];
+    project.score = null;
+    project.status = 'READY_FOR_JURY';
+    for (const [k, c] of certificates.entries()) {
+      if (c.projectId === project.id) {
+        certificates.delete(k);
+      }
+    }
+    persistToDisk();
+    return sendJson(res, 200, { success: true, project, message: 'Tüm jüri değerlendirmeleri sıfırlandı.' });
+  }
+
   // 9. Certificates: Get All
   if (pathname === '/api/v1/certificates' && req.method === 'GET') {
     return sendJson(res, 200, { success: true, data: Array.from(certificates.values()) });
@@ -516,6 +579,8 @@ const server = http.createServer(async (req, res) => {
       senderId: body.senderId || 'RZV-EXE-001',
       senderName: body.senderName || 'Mustafa Çoban',
       senderRole: body.senderRole || 'DEVELOPER',
+      recipientId: body.recipientId || '',
+      recipientName: body.recipientName || '',
       content: body.content || '',
       createdAt: new Date().toISOString()
     };
