@@ -1,0 +1,213 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SYSTEM_ADMIN
+  GLOBAL_CTO
+  TECHNICAL_JURY
+  DEVELOPER
+}
+
+enum SubmissionStatus {
+  DRAFT
+  QUARANTINED
+  READY_FOR_JURY
+  UNDER_REVIEW
+  REVISION_REQUESTED
+  DISPUTED
+  PENDING_CTO_APPROVAL
+  APPROVED_PUBLISHED
+  REJECTED
+}
+
+enum ArchiveFormat {
+  ZIP
+  RAR
+}
+
+enum CertificateType {
+  PROJECT_PARTICIPATION
+  PROJECT_COMPLETION
+  APPRECIATION
+  COMMENDATION
+  VOLUNTEER_CONTRIBUTION
+  EVENT_PARTICIPATION
+  VOLUNTEER_PROJECT_PARTICIPATION
+  VOLUNTEER_PROJECT_COMPLETION
+  VOLUNTEER_PROJECT_DEV_SUCCESS
+  SOFTWARE_PROJECT_PARTICIPATION
+  WEB_DEV_PROJECT_PARTICIPATION
+  AI_PROJECT_CONTRIBUTION
+  AUTOMATION_PROJECT_COMPLETION
+}
+
+model User {
+  id               String         @id @default(uuid())
+  email            String         @unique
+  passwordHash     String
+  fullName         String
+  role             Role           @default(DEVELOPER)
+  organization     String?
+  country          String         @default("TR")
+  isActive         Boolean        @default(true)
+  isMfaEnabled     Boolean        @default(false)
+  mfaSecret        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // Relations
+  projects         Project[]      @relation("OwnerProjects")
+  juryAssignments  JuryAssignment[]
+  evaluations      Evaluation[]
+  sentMessages     Message[]      @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  certificates     Certificate[]  @relation("RecipientCertificates")
+}
+
+model Project {
+  id               String            @id @default(uuid())
+  title            String
+  description      String
+  category         String
+  technologies     String[]
+  version          String            @default("1.0.0")
+  status           SubmissionStatus  @default(DRAFT)
+  ownerId          String
+  owner            User              @relation("OwnerProjects", fields: [ownerId], references: [id])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  submissions      Submission[]
+  juryAssignments JuryAssignment[]
+  evaluations      Evaluation[]
+  messages         Message[]
+  certificates     Certificate[]
+}
+
+model Submission {
+  id               String         @id @default(uuid())
+  projectId        String
+  project          Project        @relation(fields: [projectId], references: [id])
+  version          String
+  format           ArchiveFormat
+  r2StorageKey     String
+  fileName         String
+  fileSizeBytes    BigInt
+  sha256           String
+  isClean          Boolean        @default(false)
+  quarantineReason String?
+  createdAt        DateTime       @default(now())
+
+  evaluations      Evaluation[]
+}
+
+model JuryAssignment {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  juryId      String
+  jury        User     @relation(fields: [juryId], references: [id])
+  assignedBy  String   // CTO or System Admin
+  assignedAt  DateTime @default(now())
+  isCompleted Boolean  @default(false)
+
+  @@unique([projectId, juryId])
+}
+
+model Evaluation {
+  id                   String      @id @default(uuid())
+  projectId            String
+  project              Project     @relation(fields: [projectId], references: [id])
+  submissionId         String
+  submission           Submission  @relation(fields: [submissionId], references: [id])
+  juryId               String
+  jury                 User        @relation(fields: [juryId], references: [id])
+  
+  // 100-Point Weighted Rubric
+  codeQualityScore     Int         // Max 30
+  securityScore        Int         // Max 20
+  performanceScore     Int         // Max 20
+  functionalityScore   Int         // Max 20
+  documentationScore   Int         // Max 10
+  totalScore           Int         // Max 100
+
+  technicalReport      String
+  revisionRequested    Boolean     @default(false)
+  revisionDetails      String?
+  isFinalizedByJury    Boolean     @default(false)
+  
+  // CTO Approval & Audit
+  isApprovedByCto      Boolean     @default(false)
+  ctoNotes             String?
+  ctoApprovedAt        DateTime?
+  
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+model Certificate {
+  id                  String          @id @default(uuid())
+  certificateNumber   String          @unique // e.g. RZV-2026-AI-8F2B19AC
+  type                CertificateType
+  titleTr             String
+  titleEn             String
+  recipientId         String
+  recipient           User            @relation("RecipientCertificates", fields: [recipientId], references: [id])
+  projectId           String?
+  project             Project?        @relation(fields: [projectId], references: [id])
+  finalScore          Int?
+  pdfR2Key            String?
+  cryptoHash          String          // Ed25519 signature
+  isRevoked           Boolean         @default(false)
+  revocationReason    String?
+
+  // Official Approvals
+  approvedByCtoName   String          @default("Gökçenur Öztürk")
+  approvedByEntity    String          @default("REİZMEDYA")
+  issuedAt            DateTime        @default(now())
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  senderId    String
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId  String
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content     String
+  attachmentUrl String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  body        String
+  actionUrl   String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // e.g. "SOURCE_DOWNLOADED", "SCORE_SUBMITTED", "CTO_OVERRIDE"
+  targetId    String?
+  ipAddress   String
+  userAgent   String
+  metadata    Json?
+  timestamp   DateTime @default(now())
+}

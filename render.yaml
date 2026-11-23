@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: reizeval-central-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: "echo Build completed"
+    startCommand: node backend/standalone-server.mjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0

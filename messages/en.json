@@ -1,0 +1,55 @@
+{
+  "common": {
+    "appName": "REIZEVAL",
+    "appTitle": "REIZEVAL — Global Project Assessment Platform",
+    "developerTeam": "REİZMEDYA",
+    "ctoName": "Gökçenur Öztürk",
+    "ctoRole": "Global CTO",
+    "logout": "Log Out",
+    "settings": "Settings",
+    "profile": "Profile",
+    "notifications": "Notifications",
+    "language": "Language",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "status": "Status",
+    "score": "Score",
+    "version": "Version",
+    "offlineNotice": "Lost connection to the central server. Attempting to reconnect..."
+  },
+  "roles": {
+    "SYSTEM_ADMIN": "System Administrator",
+    "GLOBAL_CTO": "Global CTO",
+    "TECHNICAL_JURY": "Technical Jury",
+    "DEVELOPER": "Project Developer"
+  },
+  "rubric": {
+    "title": "100-Point Assessment System",
+    "codeQuality": "Code Quality & Architecture (Max 30)",
+    "security": "Security & Vulnerability Audit (Max 20)",
+    "performance": "Performance & Efficiency (Max 20)",
+    "functionality": "Functionality & Accuracy (Max 20)",
+    "documentation": "Documentation & Testing (Max 10)",
+    "total": "Total Score",
+    "technicalReport": "Detailed Technical Jury Rationale",
+    "requestRevision": "Request Revision",
+    "submitEvaluation": "Complete & Submit for CTO Approval"
+  },
+  "upload": {
+    "title": "Upload Project Source Code (ZIP / RAR)",
+    "dragDrop": "Drag & drop ZIP or RAR archive here or select via Windows Explorer",
+    "selectFile": "Select Archive (.zip / .rar)",
+    "sha256": "SHA-256 Hash Verification",
+    "fileSize": "File Size",
+    "uploading": "Uploading...",
+    "quarantineNotice": "Uploaded archives undergo automated malware and security scans before jury release."
+  },
+  "certificates": {
+    "title": "REİZMEDYA Achievement & Participation Documents",
+    "downloadPdf": "Download Official PDF Certificate",
+    "verifyQr": "QR Verification Code",
+    "certNumber": "Certificate ID",
+    "disclaimer": "REİZMEDYA documents represent specialized private achievement recognitions and do not constitute formal government accreditation."
+  }
+}

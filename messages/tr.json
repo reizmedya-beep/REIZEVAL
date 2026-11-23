@@ -1,0 +1,55 @@
+{
+  "common": {
+    "appName": "REIZEVAL",
+    "appTitle": "REIZEVAL — Küresel Proje Değerlendirme Platformu",
+    "developerTeam": "REİZMEDYA",
+    "ctoName": "Gökçenur Öztürk",
+    "ctoRole": "Global CTO",
+    "logout": "Oturumu Kapat",
+    "settings": "Ayarlar",
+    "profile": "Profil",
+    "notifications": "Bildirimler",
+    "language": "Dil",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "loading": "Yükleniyor...",
+    "status": "Durum",
+    "score": "Puan",
+    "version": "Sürüm",
+    "offlineNotice": "Merkezi sunucu ile bağlantı kesildi. Yeniden bağlanmaya çalışılıyor..."
+  },
+  "roles": {
+    "SYSTEM_ADMIN": "Sistem Yöneticisi",
+    "GLOBAL_CTO": "Global CTO",
+    "TECHNICAL_JURY": "Teknik Jüri",
+    "DEVELOPER": "Proje Geliştiricisi"
+  },
+  "rubric": {
+    "title": "100 Puanlık Değerlendirme Sistemi",
+    "codeQuality": "Kod Kalitesi & Mimari (Maks. 30 Puan)",
+    "security": "Güvenlik & Açık Denetimi (Maks. 20 Puan)",
+    "performance": "Performans & Verimlilik (Maks. 20 Puan)",
+    "functionality": "İşlevsellik & Doğruluk (Maks. 20 Puan)",
+    "documentation": "Dokümantasyon & Testler (Maks. 10 Puan)",
+    "total": "Toplam Puan",
+    "technicalReport": "Gerekçeli Teknik Jüri Raporu",
+    "requestRevision": "Revizyon Talep Et",
+    "submitEvaluation": "Değerlendirmeyi Tamamla ve CTO Onayına Gönder"
+  },
+  "upload": {
+    "title": "Proje Kaynak Kodu Yükleme (ZIP / RAR)",
+    "dragDrop": "ZIP veya RAR dosyasını buraya sürükleyin veya Windows Gezgini'nden seçin",
+    "selectFile": "Arşiv Dosyası Seç (.zip / .rar)",
+    "sha256": "SHA-256 Hash Doğrulaması",
+    "fileSize": "Dosya Boyutu",
+    "uploading": "Yükleniyor...",
+    "quarantineNotice": "Dosya yüklendikten sonra güvenlik ve zararlı yazılım taraması için otomatik karantinaya alınır."
+  },
+  "certificates": {
+    "title": "REİZMEDYA Başarı ve Katılım Belgeleri",
+    "downloadPdf": "Resmî PDF Belgesini İndir",
+    "verifyQr": "QR Doğrulama Kodu",
+    "certNumber": "Belge No",
+    "disclaimer": "REİZMEDYA belgeleri özel faaliyet ve başarı belgeleridir. Resmî devlet akreditasyonu yerine geçmez."
+  }
+}
