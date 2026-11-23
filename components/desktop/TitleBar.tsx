@@ -43,9 +43,11 @@ export function TitleBar() {
     <header className="h-10 w-full bg-[#0a1128] border-b border-blue-900/40 select-none flex items-center justify-between px-3 fixed top-0 left-0 z-50 drag-region text-slate-300 text-xs">
       {/* Brand & Left Info */}
       <div className="flex items-center space-x-2.5 no-drag">
-        <div className="h-5 w-5 rounded bg-blue-600 flex items-center justify-center font-black text-[10px] text-white tracking-tighter shadow-sm">
-          RZ
-        </div>
+        <img 
+          src="/images/reizeval-shield.png" 
+          alt="REIZEVAL" 
+          className="h-5 w-5 object-contain rounded drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" 
+        />
         <div className="flex items-center space-x-2 font-semibold tracking-wider text-slate-200">
           <span>REIZEVAL</span>
           <span className="text-blue-500 font-mono text-[10px] px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/40">

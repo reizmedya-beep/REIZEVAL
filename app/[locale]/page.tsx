@@ -557,6 +557,22 @@ export default function ReizevalDesktopApp() {
       {/* Left Sidebar */}
       <aside className="w-72 bg-[#0a1128] border-r border-blue-900/40 flex flex-col justify-between p-4 select-none">
         <div className="space-y-4">
+          {/* Official REIZEVAL Logo & Brand Header */}
+          <div className="p-3 rounded-xl bg-gradient-to-b from-blue-950/70 via-slate-900/80 to-slate-900/90 border border-blue-500/30 flex items-center space-x-3 shadow-lg shadow-blue-950/50">
+            <img 
+              src="/images/reizeval-shield.png" 
+              alt="REIZEVAL" 
+              className="h-11 w-11 object-contain rounded-lg drop-shadow-[0_0_12px_rgba(59,130,246,0.6)]" 
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-black text-sm tracking-wider flex items-center space-x-1.5">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-sky-200 to-white">REIZEVAL</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 border border-blue-400/30 font-semibold">2026</span>
+              </div>
+              <p className="text-[9px] text-blue-300/70 truncate tracking-tight">Global Assessment Platform</p>
+            </div>
+          </div>
+
           {/* Active Profile Box */}
           <div className="p-3 rounded-xl bg-slate-900/90 border border-blue-900/50 space-y-1.5">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
