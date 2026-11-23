@@ -47,13 +47,14 @@ import { SecurityAuditScanner } from "@/components/security/SecurityAuditScanner
 import { RadarVarianceChart } from "@/components/jury/RadarVarianceChart";
 import { AuthLoginPortal } from "@/components/auth/AuthLoginPortal";
 
-type ActiveTab = "PROJECTS" | "JURY_AUDIT" | "CTO_OVERSIGHT" | "MESSAGES" | "CERTIFICATES";
+type ActiveTab = "MY_PROJECT" | "ALL_PROJECTS" | "JURY_AUDIT" | "RADAR" | "CTO_OVERSIGHT" | "MESSAGES" | "RESULTS";
 
 interface ProjectItem {
   id: string;
   projectKey: "PROJE_1" | "PROJE_2" | "PROJE_3";
   title: string;
   categoryName: string;
+  ownerId?: string;
   ownerName: string;
   ownerTitle: string;
   currentStage: "V1_FRONTEND" | "V2_BACKEND_DB" | "V3_FULL_STACK" | "INDEPENDENT";
@@ -104,6 +105,7 @@ function normalizeProject(p: any, idx: number): ProjectItem {
     projectKey: pKey,
     title: p.title || `REIZEVAL — ${pKey}`,
     categoryName: p.category || (pKey === "PROJE_1" ? "Temel Web Mimarisi" : pKey === "PROJE_2" ? "Kademeli Sistem (_WEB, _MOBİL, _OTOMASYON)" : "Python Otomasyon & Bot Mimarisi"),
+    ownerId: p.ownerId || (pKey === "PROJE_1" ? "RZV-EXE-001" : pKey === "PROJE_2" ? "RZV-EXE-002" : "RZV-EXE-003"),
     ownerName: p.ownerName || (pKey === "PROJE_1" ? "Mustafa Çoban" : pKey === "PROJE_2" ? "Hülya Bulut" : "Mustafa Dalerdem"),
     ownerTitle: p.ownerTitle || (pKey === "PROJE_1" ? "Kurucu / CEO" : pKey === "PROJE_2" ? "CXO & CTO Yardımcısı" : "CIO / Akademi Başkanı"),
     currentStage: (pKey === "PROJE_2" ? "V3_FULL_STACK" : "INDEPENDENT") as any,
@@ -146,7 +148,7 @@ export default function ReizevalDesktopApp() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("PROJECTS");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("MY_PROJECT");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Certificate Modal State
@@ -167,6 +169,7 @@ export default function ReizevalDesktopApp() {
     projectKey: "PROJE_1",
     title: "REIZEVAL — Kurumsal Masaüstü Platformu",
     categoryName: "Sistem & Masaüstü Mühendisliği",
+    ownerId: "RZV-EXE-001",
     ownerName: "Mustafa Çoban",
     ownerTitle: "Kurucu / CEO",
     currentStage: "INDEPENDENT",
@@ -175,6 +178,15 @@ export default function ReizevalDesktopApp() {
     archives: [],
     juryReviews: []
   };
+
+  // Developer's own isolated project
+  const myProject: ProjectItem = projects.find(p => 
+    (currentUser?.fullName && p.ownerName.toLowerCase().includes(currentUser.fullName.toLowerCase())) ||
+    (currentUser?.id && p.ownerId === currentUser.id) ||
+    (currentUser?.email?.includes('coban') && p.projectKey === 'PROJE_1') ||
+    (currentUser?.email?.includes('bulut') && p.projectKey === 'PROJE_2') ||
+    (currentUser?.email?.includes('dalerdem') && p.projectKey === 'PROJE_3')
+  ) || projects[0] || activeProject;
 
   // Translation Toggle state for Jury reviews
   const [translatedReviews, setTranslatedReviews] = useState<Record<string, boolean>>({});
@@ -196,6 +208,13 @@ export default function ReizevalDesktopApp() {
           if (parsed && parsed.email) {
             setCurrentUser(parsed);
             if (parsed.token) apiClient.setToken(parsed.token);
+            if (parsed.role === "GLOBAL_CTO") {
+              setActiveTab("CTO_OVERSIGHT");
+            } else if (parsed.role === "TECHNICAL_JURY") {
+              setActiveTab("JURY_AUDIT");
+            } else {
+              setActiveTab("MY_PROJECT");
+            }
           }
         } catch (e) {
           console.warn("Failed to parse saved user", e);
@@ -261,7 +280,7 @@ export default function ReizevalDesktopApp() {
     } else if (user.role === "TECHNICAL_JURY") {
       setActiveTab("JURY_AUDIT");
     } else {
-      setActiveTab("PROJECTS");
+      setActiveTab("MY_PROJECT");
     }
     setStatusMessage(`Hoş geldiniz, Sayın ${user.fullName}. Oturum başarıyla açıldı.`);
   };
@@ -307,7 +326,8 @@ export default function ReizevalDesktopApp() {
 
   // Upload ZIP / WinRAR (Live Native File Dialog & Central Server Upload)
   const handleAddNewArchive = async () => {
-    if (!activeProject) return;
+    const targetProject = currentUser?.role === "DEVELOPER" ? myProject : activeProject;
+    if (!targetProject) return;
 
     let selectedFile: any = null;
     if (typeof window !== "undefined" && (window as any).reizevalNative?.selectArchive) {
@@ -321,13 +341,13 @@ export default function ReizevalDesktopApp() {
 
     setStatusMessage(`Arşiv (${selectedFile.fileName}) merkezi sunucuya yükleniyor...`);
     try {
-      const res = await apiClient.uploadMultiArchives(activeProject.id, [{
+      const res = await apiClient.uploadMultiArchives(targetProject.id, [{
         fileName: selectedFile.fileName,
         fileSizeBytes: selectedFile.sizeBytes,
         sizeFormatted: selectedFile.sizeFormatted,
         sha256: selectedFile.sha256,
         format: selectedFile.extension.toUpperCase() as "ZIP" | "RAR",
-        category: 'SOURCE_CODE'
+        category: targetProject.projectKey === "PROJE_2" ? "_WEB" : "SOURCE_CODE"
       }]);
 
       if (res && res.project) {
@@ -341,13 +361,14 @@ export default function ReizevalDesktopApp() {
 
   // Delete Archive
   const handleDeleteArchive = async (arcId: string) => {
+    const targetProject = currentUser?.role === "DEVELOPER" ? myProject : activeProject;
     try {
-      await apiClient.deleteArchive(activeProject.id, arcId);
+      await apiClient.deleteArchive(targetProject.id, arcId);
       await syncProjectsAndMessages();
       setStatusMessage("Arşiv merkezi sunucudan başarıyla silindi.");
     } catch (err: any) {
       setProjects(prev => prev.map(p => {
-        if (p.id === activeProject.id) {
+        if (p.id === targetProject.id) {
           return {
             ...p,
             archives: p.archives.filter(a => a.id !== arcId)
@@ -598,37 +619,54 @@ export default function ReizevalDesktopApp() {
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
               Çalışma Ekranları
             </div>
-            {[
-              { tab: "PROJECTS", label: "Projeler & ZIP/RAR", icon: FolderArchive, badge: "3 Proje" },
-              { tab: "JURY_AUDIT", label: "100 Puanlık Rubrik", icon: Sliders, badge: "12 Jüri" },
-              { tab: "CTO_OVERSIGHT", label: "Global CTO Masası", icon: ShieldCheck, badge: "Gökçenur Öztürk" },
-              { tab: "MESSAGES", label: "Jüriye Özelden Mesaj", icon: MessageSquare, badge: "Birebir" },
-              { tab: "CERTIFICATES", label: "Yatay A4 Sertifikalar", icon: Award, badge: "13 Resmî Tür" },
-            ].map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.tab;
-              return (
-                <button
-                  key={item.tab}
-                  onClick={() => setActiveTab(item.tab as ActiveTab)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                    isActive
-                      ? "bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                    isActive ? "bg-blue-900 text-blue-200" : "bg-slate-900 text-slate-400"
-                  }`}>
-                    {item.badge}
-                  </span>
-                </button>
-              );
-            })}
+            {(() => {
+              const navItems = currentUser.role === "DEVELOPER"
+                ? [
+                    { tab: "MY_PROJECT", label: "Projem & ZIP/RAR", icon: FolderArchive, badge: myProject.projectKey },
+                    { tab: "RESULTS", label: "Sonuçlar & Sıralama", icon: Award, badge: myProject.score ? `${myProject.score} Puan` : "Canlı" },
+                    { tab: "MESSAGES", label: "Jüri ile İletişim", icon: MessageSquare, badge: "Birebir" },
+                  ]
+                : currentUser.role === "TECHNICAL_JURY"
+                ? [
+                    { tab: "JURY_AUDIT", label: "100 Puanlık Rubrik", icon: Sliders, badge: "3 Aday Proje" },
+                    { tab: "RADAR", label: "Varyans Radarı", icon: Activity, badge: "Konsensüs" },
+                    { tab: "RESULTS", label: "Sonuçlar & Sıralama", icon: Award, badge: "Puan Tablosu" },
+                    { tab: "MESSAGES", label: "Geliştiriciye Mesaj", icon: MessageSquare, badge: "Birebir" },
+                  ]
+                : [
+                    { tab: "CTO_OVERSIGHT", label: "Global CTO Masası", icon: ShieldCheck, badge: "Nihai Onay" },
+                    { tab: "ALL_PROJECTS", label: "Tüm Projeler & Arşivler", icon: FolderArchive, badge: "3 Proje" },
+                    { tab: "RADAR", label: "Varyans Radarı", icon: Activity, badge: "Konsensüs" },
+                    { tab: "RESULTS", label: "Sonuçlar & Resmî Belgeler", icon: Award, badge: "Tescil Masası" },
+                    { tab: "MESSAGES", label: "Kurul Mesajlaşma", icon: MessageSquare, badge: "Tüm Jüriler" },
+                  ];
+
+              return navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.tab;
+                return (
+                  <button
+                    key={item.tab}
+                    onClick={() => setActiveTab(item.tab as ActiveTab)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                      isActive
+                        ? "bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/30"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 truncate">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                      isActive ? "bg-blue-900 text-blue-200" : "bg-slate-900 text-slate-400"
+                    }`}>
+                      {item.badge}
+                    </span>
+                  </button>
+                );
+              });
+            })()}
           </div>
         </div>
 
@@ -655,106 +693,53 @@ export default function ReizevalDesktopApp() {
           </div>
         )}
 
-        {/* 1. PROJECTS TAB (PROJE_1, PROJE_2, PROJE_3 + ZIP UPLOAD & DELETE) */}
-        {activeTab === "PROJECTS" && (
+        {/* 1. DEVELOPER ISOLATED VIEW (MY_PROJECT) - ONLY CURRENT DEVELOPER'S PROJECT */}
+        {activeTab === "MY_PROJECT" && (
           <div className="max-w-5xl mx-auto space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
-                <span>Proje Yönetimi, Çoklu ZIP Yükleme ve Silme Masası</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono">
-                  100 GB Kapasite
-                </span>
-              </h1>
-              <p className="text-sm text-slate-400 mt-1">
-                Kullanıcılar arşivleri yükleyebilir, silebilir ve jürilerin verdiği puanları canlı olarak takip edebilir.
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
+                  <span>Projem & ZIP/RAR Yükleme Masası</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono font-semibold">
+                    100 GB Kapasite
+                  </span>
+                </h1>
+                <p className="text-sm text-slate-400 mt-1">
+                  Geliştirici: <strong className="text-white">{myProject.ownerName}</strong> ({myProject.ownerTitle}) • <span className="text-blue-300 font-mono font-bold">{myProject.projectKey}</span>
+                </p>
+              </div>
+
+              <div className="text-right">
+                <div className={`text-xs font-mono font-bold px-3 py-1.5 rounded-lg border ${
+                  myProject.score 
+                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-700" 
+                    : "bg-blue-950/80 text-blue-300 border-blue-800"
+                }`}>
+                  {myProject.score ? `${myProject.score} / 100 Puan (Değerlendirildi)` : "Jüri İncelemesi Bekleniyor"}
+                </div>
+              </div>
             </div>
 
-            {/* 3 Project Cards */}
-            {isLoadingProjects && projects.length === 0 ? (
-              <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
-                <RefreshCw className="h-6 w-6 text-blue-400 animate-spin" />
-                <div className="text-sm font-semibold text-white">Merkezi Veritabanından Projeler Çekiliyor...</div>
-                <div className="text-xs text-slate-500">Güvenli Veri Akışı Doğrulanıyor...</div>
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
-                <div className="text-sm font-semibold text-amber-300">Merkezi Sunucuda Proje Bulunamadı</div>
-                <button 
-                  onClick={() => syncProjectsAndMessages()} 
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white"
-                >
-                  Yeniden Bağlan
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-4">
-                {projects.map((p) => {
-                  const isSelected = selectedProjectId === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => setSelectedProjectId(p.id)}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                        isSelected
-                          ? "bg-blue-950/90 border-blue-500 shadow-xl shadow-blue-950/50"
-                          : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[11px] font-bold">
-                        <span className="text-blue-400">{p.projectKey}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          p.score ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
-                        }`}>
-                          {p.score ? `${p.score} / 100 Puan` : "Değerlendiriliyor"}
-                        </span>
-                      </div>
-
-                      <div className="text-xs font-bold text-white mt-1 line-clamp-1">{p.title}</div>
-                      <div className="text-[11px] text-slate-300 mt-0.5">{p.ownerName} ({p.ownerTitle})</div>
-                      <div className="text-[10px] text-slate-400 mt-1">
-                        Kategori: <span className="text-slate-300">{p.categoryName}</span>
-                      </div>
-
-                      {p.score && (
-                        <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-[10px]">
-                          <span className="text-emerald-400 font-semibold">Onaylandı</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenCertificate(p);
-                            }}
-                            className="text-amber-400 hover:text-amber-300 font-bold underline flex items-center space-x-1"
-                          >
-                            <Award className="h-3 w-3" />
-                            <span>Yatay A4 Belge</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Active Project Management Box */}
-            <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
-              <div className="flex items-center justify-between">
+            {/* Developer's Isolated Project Card */}
+            <div className="p-6 rounded-xl bg-slate-900/90 border border-blue-900/50 space-y-5 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
                     <FolderArchive className="h-5 w-5 text-blue-400" />
-                    <span>{activeProject.title}</span>
+                    <span>{myProject.title}</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Geliştirici: <strong className="text-white">{activeProject.ownerName}</strong> • {activeProject.categoryName}
-                  </p>
+                  <div className="text-xs text-slate-400 mt-1 flex items-center space-x-2">
+                    <span>Kategori: <strong className="text-slate-200">{myProject.categoryName}</strong></span>
+                    <span>•</span>
+                    <span>Aşama: <strong className="text-blue-300">{myProject.currentStage}</strong></span>
+                  </div>
                 </div>
 
-                {/* Upload Action & World-Class Tools */}
-                <div className="flex items-center space-x-2">
+                {/* Developer Actions */}
+                <div className="flex items-center space-x-2.5">
                   <button
                     onClick={() => setShowSecurityModal(true)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 hover:bg-emerald-900 text-emerald-300 text-xs font-semibold flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-800/80 hover:bg-emerald-900 text-emerald-300 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
                   >
                     <ShieldCheck className="h-3.5 w-3.5" />
                     <span>SAST Güvenlik Taraması</span>
@@ -762,15 +747,15 @@ export default function ReizevalDesktopApp() {
 
                   <button
                     onClick={() => setShowRadarModal(true)}
-                    className="px-3 py-1.5 rounded-lg bg-blue-950 border border-blue-800 hover:bg-blue-900 text-blue-300 text-xs font-semibold flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-lg bg-blue-950/80 border border-blue-800/80 hover:bg-blue-900 text-blue-300 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
                   >
-                    <Sliders className="h-3.5 w-3.5" />
+                    <Activity className="h-3.5 w-3.5" />
                     <span>5 Eksenli Varyans Radarı</span>
                   </button>
 
                   <button
                     onClick={handleAddNewArchive}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow"
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
                   >
                     <Plus className="h-4 w-4" />
                     <span>Windows Gezgini'nden Arşiv Ekle</span>
@@ -779,7 +764,7 @@ export default function ReizevalDesktopApp() {
               </div>
 
               {/* Special Kademeli & Alt Modül Info (If PROJE_2) */}
-              {activeProject.projectKey === "PROJE_2" && (
+              {myProject.projectKey === "PROJE_2" && (
                 <div className="p-4 rounded-lg bg-blue-950/40 border border-blue-800/40 space-y-2 text-xs">
                   <div className="font-bold text-blue-300 flex items-center space-x-2">
                     <Sparkles className="h-4 w-4 text-amber-400" />
@@ -802,25 +787,29 @@ export default function ReizevalDesktopApp() {
                 </div>
               )}
 
-              {/* Uploaded Archives List with DELETE button */}
-              <div className="space-y-2">
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between">
-                  <span>Yüklü Olan Arşiv Dosyaları ({activeProject.archives.length} Adet)</span>
+              {/* Uploaded Archives List with DELETE & DRM VIEW */}
+              <div className="space-y-2.5">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
+                  <span>Yüklü Olan Arşiv Dosyalarınız ({myProject.archives.length} Adet)</span>
                   <span className="text-[11px] text-slate-500 font-normal">İstediğiniz arşivi silebilir veya yenisini ekleyebilirsiniz</span>
                 </div>
 
-                {activeProject.archives.length === 0 ? (
-                  <div className="p-6 rounded-lg bg-[#060a17] border border-dashed border-slate-800 text-center text-xs text-slate-400">
-                    Bu projeye henüz arşiv yüklenmedi. Yukarıdaki butonla ZIP veya RAR yükleyebilirsiniz.
+                {myProject.archives.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-[#060a17] border border-dashed border-slate-800 text-center space-y-2">
+                    <FolderArchive className="h-8 w-8 text-slate-600 mx-auto" />
+                    <div className="text-xs text-slate-300 font-medium">Bu projeye henüz arşiv yüklenmedi.</div>
+                    <p className="text-[11px] text-slate-500">
+                      Yukarıdaki "Windows Gezgini'nden Arşiv Ekle" butonuyla projenizin ZIP veya RAR arşivlerini yükleyebilirsiniz.
+                    </p>
                   </div>
                 ) : (
-                  activeProject.archives.map((arc, i) => (
+                  myProject.archives.map((arc, i) => (
                     <div
                       key={arc.id}
                       className="p-3.5 rounded-lg bg-[#060a17] border border-blue-900/40 flex items-center justify-between text-xs hover:border-blue-700/60 transition-all"
                     >
                       <div className="flex items-center space-x-3">
-                        <span className="h-6 w-6 rounded bg-blue-950 text-blue-300 font-bold font-mono text-[10px] flex items-center justify-center">
+                        <span className="h-7 w-7 rounded bg-blue-950 text-blue-300 font-bold font-mono text-[11px] flex items-center justify-center">
                           #{i + 1}
                         </span>
                         <div>
@@ -868,24 +857,24 @@ export default function ReizevalDesktopApp() {
             </div>
 
             {/* Approved Project Certificate Preview Card */}
-            {activeProject.score && (
-              <div className="p-6 rounded-xl bg-gradient-to-r from-blue-950/90 via-slate-900 to-slate-950 border border-blue-700/60 flex items-center justify-between shadow-xl">
+            {myProject.status === "APPROVED_PUBLISHED" && (
+              <div className="p-6 rounded-xl bg-gradient-to-r from-blue-950/90 via-slate-900 to-slate-950 border border-emerald-600/60 flex items-center justify-between shadow-2xl">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
                     <Award className="h-6 w-6 text-amber-400" />
-                    <h3 className="text-base font-bold text-white">Resmî Başarı Belgeniz Hazırlandı</h3>
+                    <h3 className="text-base font-bold text-white">Resmî Başarı Belgeniz Onaylandı!</h3>
                   </div>
                   <p className="text-xs text-slate-300">
-                    {activeProject.ownerName} ({activeProject.ownerTitle}) • Puan: <strong className="text-emerald-400">{activeProject.score} / 100 A+</strong>
+                    {myProject.ownerName} ({myProject.ownerTitle}) • Puan: <strong className="text-emerald-400">{myProject.score} / 100</strong>
                   </p>
                   <div className="text-[10px] text-slate-400">
-                    Onay: Global CTO Gökçenur Öztürk • Resmî REİZMEDYA Mühürlü
+                    Global CTO Gökçenur Öztürk Onaylı • Resmî REİZMEDYA Mühürlü
                   </div>
                 </div>
 
                 <button
-                  onClick={() => handleOpenCertificate(activeProject)}
-                  className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-amber-500/20"
+                  onClick={() => handleOpenCertificate(myProject)}
+                  className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all"
                 >
                   <Award className="h-4 w-4" />
                   <span>Yatay A4 Belgeyi Görüntüle & İndir</span>
@@ -895,7 +884,146 @@ export default function ReizevalDesktopApp() {
           </div>
         )}
 
-        {/* 2. JURY AUDIT (100 BASE + WEB, MOBIL, OTOMASYON SUB-SCORES + EN/TR TRANSLATION) */}
+        {/* 2. CTO MASTER ALL PROJECTS VIEW (ALL_PROJECTS) - GLOBAL CTO ONLY */}
+        {activeTab === "ALL_PROJECTS" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
+                <span>Tüm Projeler & Arşiv Denetim Masası</span>
+                <span className="text-xs px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono">
+                  3 Aday Proje
+                </span>
+              </h1>
+              <p className="text-sm text-slate-400 mt-1">
+                Sistemdeki tüm projeleri, yüklenen arşivleri ve dosya bütünlüklerini Global CTO yetkisiyle inceleyin.
+              </p>
+            </div>
+
+            {/* 3 Project Selection Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              {projects.map((p) => {
+                const isSelected = selectedProjectId === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedProjectId(p.id)}
+                    className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                      isSelected
+                        ? "bg-blue-950/90 border-blue-500 shadow-xl shadow-blue-950/50"
+                        : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className="text-blue-400">{p.projectKey}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        p.score ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
+                      }`}>
+                        {p.score ? `${p.score} / 100 Puan` : "İnceleniyor"}
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-bold text-white mt-1 line-clamp-1">{p.title}</div>
+                    <div className="text-[11px] text-slate-300 mt-0.5">{p.ownerName} ({p.ownerTitle})</div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Kategori: <span className="text-slate-300">{p.categoryName}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                      {p.archives.length} Adet Arşiv Yüklü
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Selected Project Management Box */}
+            <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                    <FolderArchive className="h-5 w-5 text-blue-400" />
+                    <span>{activeProject.title}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Geliştirici: <strong className="text-white">{activeProject.ownerName}</strong> ({activeProject.ownerTitle}) • {activeProject.categoryName}
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowSecurityModal(true)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 hover:bg-emerald-900 text-emerald-300 text-xs font-semibold flex items-center space-x-1.5"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>SAST Güvenlik Taraması</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowRadarModal(true)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-950 border border-blue-800 hover:bg-blue-900 text-blue-300 text-xs font-semibold flex items-center space-x-1.5"
+                  >
+                    <Activity className="h-3.5 w-3.5" />
+                    <span>Varyans Radarı</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Uploaded Archives List with DRM */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between">
+                  <span>Yüklü Olan Arşiv Dosyaları ({activeProject.archives.length} Adet)</span>
+                  <span className="text-[11px] text-slate-500 font-normal">Global CTO İnceleme Modu</span>
+                </div>
+
+                {activeProject.archives.length === 0 ? (
+                  <div className="p-6 rounded-lg bg-[#060a17] border border-dashed border-slate-800 text-center text-xs text-slate-400">
+                    Bu projeye henüz arşiv yüklenmedi.
+                  </div>
+                ) : (
+                  activeProject.archives.map((arc, i) => (
+                    <div
+                      key={arc.id}
+                      className="p-3.5 rounded-lg bg-[#060a17] border border-blue-900/40 flex items-center justify-between text-xs hover:border-blue-700/60 transition-all"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="h-6 w-6 rounded bg-blue-950 text-blue-300 font-bold font-mono text-[10px] flex items-center justify-center">
+                          #{i + 1}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-white flex items-center space-x-2">
+                            <span>{arc.fileName}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-950 border border-blue-800 text-blue-300 font-mono">
+                              {arc.tag}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                              {arc.format}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-md">
+                            SHA-256: {arc.sha256} • Tarih: {arc.uploadedAt}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-3">
+                        <span className="font-mono text-blue-400 font-bold">{arc.sizeFormatted}</span>
+
+                        <button
+                          onClick={() => setViewerModalArchive(arc.fileName)}
+                          className="px-2.5 py-1.5 rounded bg-blue-950 hover:bg-blue-900 text-blue-300 hover:text-white border border-blue-800 text-[11px] font-semibold flex items-center space-x-1"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Kodu İncele (DRM)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. JURY AUDIT (100 BASE + WEB, MOBIL, OTOMASYON SUB-SCORES) - TECHNICAL JURY ONLY */}
         {activeTab === "JURY_AUDIT" && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
@@ -916,7 +1044,7 @@ export default function ReizevalDesktopApp() {
                   onClick={() => setShowRadarModal(true)}
                   className="px-3 py-1.5 rounded-lg bg-blue-950 border border-blue-800 hover:bg-blue-900 text-blue-300 text-xs font-semibold flex items-center space-x-1"
                 >
-                  <Sliders className="h-3.5 w-3.5" />
+                  <Activity className="h-3.5 w-3.5" />
                   <span>Jüri Varyans Radarı</span>
                 </button>
                 <div>
@@ -942,29 +1070,10 @@ export default function ReizevalDesktopApp() {
               ))}
             </div>
 
-            {/* Developer / CEO Security Lockout Notice */}
-            {currentUser.role === "DEVELOPER" && (
-              <div className="p-4 rounded-xl bg-red-950/70 border border-red-700/60 text-red-200 text-xs flex items-center space-x-3 shadow-lg">
-                <Lock className="h-6 w-6 text-red-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-red-100 uppercase tracking-wider flex items-center space-x-1.5">
-                    <span>Sıfır İltimas & Yetki Kısıtlaması (RBAC / 403 Forbidden)</span>
-                  </div>
-                  <p className="mt-1 text-red-300 leading-relaxed">
-                    Sayın <strong>{currentUser.fullName}</strong> ({currentUser.title}); sistem yetki matrisine göre <strong>Geliştirici</strong> rolündesiniz. 
-                    Şirket Kurucusu / CEO dahi olsanız, puanlara müdahale edemez, kendi projenize veya başkasının projesine puan veremezsiniz. 
-                    Puanlama yetkisi yalnızca bağımsız 12 uluslararası teknik jüriye aittir.
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Rubric Form */}
-            <div className={`p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl ${
-              currentUser.role === "DEVELOPER" ? "opacity-75" : ""
-            }`}>
+            <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Temel Kriterler (100 Puan) {currentUser.role === "DEVELOPER" && "(Yalnızca İnceleme Modu - Puanlama Kilitli)"}
+                Temel Kriterler (100 Puan)
               </h3>
 
               {/* 5 Core Sliders */}
@@ -978,10 +1087,9 @@ export default function ReizevalDesktopApp() {
                     type="range"
                     min="0"
                     max="30"
-                    disabled={currentUser.role === "DEVELOPER"}
                     value={codeQuality}
                     onChange={(e) => setCodeQuality(Number(e.target.value))}
-                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full accent-blue-500 cursor-pointer"
                   />
                 </div>
 
@@ -994,10 +1102,9 @@ export default function ReizevalDesktopApp() {
                     type="range"
                     min="0"
                     max="20"
-                    disabled={currentUser.role === "DEVELOPER"}
                     value={securityScore}
                     onChange={(e) => setSecurityScore(Number(e.target.value))}
-                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full accent-blue-500 cursor-pointer"
                   />
                 </div>
 
@@ -1010,10 +1117,9 @@ export default function ReizevalDesktopApp() {
                     type="range"
                     min="0"
                     max="20"
-                    disabled={currentUser.role === "DEVELOPER"}
                     value={performanceScore}
                     onChange={(e) => setPerformanceScore(Number(e.target.value))}
-                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full accent-blue-500 cursor-pointer"
                   />
                 </div>
 
@@ -1026,10 +1132,9 @@ export default function ReizevalDesktopApp() {
                     type="range"
                     min="0"
                     max="20"
-                    disabled={currentUser.role === "DEVELOPER"}
                     value={functionalityScore}
                     onChange={(e) => setFunctionalityScore(Number(e.target.value))}
-                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full accent-blue-500 cursor-pointer"
                   />
                 </div>
 
@@ -1042,10 +1147,9 @@ export default function ReizevalDesktopApp() {
                     type="range"
                     min="0"
                     max="10"
-                    disabled={currentUser.role === "DEVELOPER"}
                     value={documentationScore}
                     onChange={(e) => setDocumentationScore(Number(e.target.value))}
-                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed"
+                    className="w-full accent-blue-500 cursor-pointer"
                   />
                 </div>
               </div>
@@ -1068,10 +1172,9 @@ export default function ReizevalDesktopApp() {
                         type="range"
                         min="0"
                         max="10"
-                        disabled={currentUser.role === "DEVELOPER"}
                         value={webBonus}
                         onChange={(e) => setWebBonus(Number(e.target.value))}
-                        className="w-full accent-blue-500 disabled:cursor-not-allowed"
+                        className="w-full accent-blue-500"
                       />
                     </div>
 
@@ -1084,10 +1187,9 @@ export default function ReizevalDesktopApp() {
                         type="range"
                         min="0"
                         max="10"
-                        disabled={currentUser.role === "DEVELOPER"}
                         value={mobileBonus}
                         onChange={(e) => setMobileBonus(Number(e.target.value))}
-                        className="w-full accent-blue-500 disabled:cursor-not-allowed"
+                        className="w-full accent-blue-500"
                       />
                     </div>
 
@@ -1100,10 +1202,9 @@ export default function ReizevalDesktopApp() {
                         type="range"
                         min="0"
                         max="10"
-                        disabled={currentUser.role === "DEVELOPER"}
                         value={automationBonus}
                         onChange={(e) => setAutomationBonus(Number(e.target.value))}
-                        className="w-full accent-blue-500 disabled:cursor-not-allowed"
+                        className="w-full accent-blue-500"
                       />
                     </div>
                   </div>
@@ -1117,34 +1218,20 @@ export default function ReizevalDesktopApp() {
                 </label>
                 <textarea
                   rows={4}
-                  disabled={currentUser.role === "DEVELOPER"}
                   value={juryCommentEn}
                   onChange={(e) => setJuryCommentEn(e.target.value)}
-                  className="w-full bg-[#060a17] border border-slate-800 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  placeholder="Teknik denetim ve inceleme raporunuzu yazınız..."
+                  className="w-full bg-[#060a17] border border-slate-800 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div className="flex justify-end pt-2">
                 <button
                   onClick={handleJurySubmitReview}
-                  disabled={currentUser.role === "DEVELOPER"}
-                  className={`px-6 py-2.5 rounded-lg font-bold text-xs flex items-center space-x-2 shadow-lg transition-all ${
-                    currentUser.role === "DEVELOPER"
-                      ? "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
-                      : "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
-                  }`}
+                  className="px-6 py-2.5 rounded-lg font-bold text-xs flex items-center space-x-2 shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer active:scale-[0.98] transition-all"
                 >
-                  {currentUser.role === "DEVELOPER" ? (
-                    <>
-                      <Lock className="h-4 w-4 text-slate-500" />
-                      <span>Yetkisiz: Geliştirici / CEO Puan Veremez (RBAC Kilitli)</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>Bu Puanı ve Raporu Global CTO Gökçenur Öztürk Onayına Gönder</span>
-                    </>
-                  )}
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Bu Puanı ve Raporu Global CTO Gökçenur Öztürk Onayına Gönder</span>
                 </button>
               </div>
             </div>
@@ -1161,38 +1248,144 @@ export default function ReizevalDesktopApp() {
                 </div>
               ) : (
                 activeProject.juryReviews.map((rev) => {
-                const isTr = translatedReviews[rev.id] || false;
-                return (
-                  <div key={rev.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <div>
-                        <strong className="text-white">{rev.juryName}</strong>
-                        <span className="text-[11px] text-slate-400 ml-2">• {rev.createdAt}</span>
+                  const isTr = translatedReviews[rev.id] || false;
+                  return (
+                    <div key={rev.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <div>
+                          <strong className="text-white">{rev.juryName}</strong>
+                          <span className="text-[11px] text-slate-400 ml-2">• {rev.createdAt}</span>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="text-emerald-400 font-bold font-mono">{rev.score} / 100 Puan</span>
+                          <button
+                            onClick={() => setTranslatedReviews(prev => ({ ...prev, [rev.id]: !isTr }))}
+                            className="px-2.5 py-1 rounded bg-blue-950 border border-blue-800 text-blue-300 hover:text-white text-[10px] font-semibold flex items-center space-x-1"
+                          >
+                            <Languages className="h-3 w-3" />
+                            <span>{isTr ? "İngilizceye Dön (English)" : "🇹🇷 Türkçeye Çevir"}</span>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-3">
-                        <span className="text-emerald-400 font-bold font-mono">{rev.score} / 100 Puan</span>
-                        {/* TRANSLATE BUTTON */}
-                        <button
-                          onClick={() => setTranslatedReviews(prev => ({ ...prev, [rev.id]: !isTr }))}
-                          className="px-2.5 py-1 rounded bg-blue-950 border border-blue-800 text-blue-300 hover:text-white text-[10px] font-semibold flex items-center space-x-1"
-                        >
-                          <Languages className="h-3 w-3" />
-                          <span>{isTr ? "İngilizceye Dön (English)" : "🇹🇷 Türkçeye Çevir"}</span>
-                        </button>
-                      </div>
-                    </div>
 
-                    <div className="text-xs text-slate-300 bg-[#060a17] p-3 rounded-lg border border-slate-800 leading-relaxed">
-                      {isTr ? rev.reportTr : rev.reportEn}
+                      <div className="text-xs text-slate-300 bg-[#060a17] p-3 rounded-lg border border-slate-800 leading-relaxed">
+                        {isTr ? rev.reportTr : rev.reportEn}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         )}
 
-        {/* 3. CTO OVERSIGHT TAB (Gökçenur Öztürk) */}
+        {/* 4. RADAR TAB (Varyans & Konsensüs Radarı) */}
+        {activeTab === "RADAR" && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
+                  <span>12 Uluslararası Jüri Varyans ve Konsensüs Radarı</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono">
+                    5 Eksenli Analiz
+                  </span>
+                </h1>
+                <p className="text-sm text-slate-400 mt-1">
+                  İncelenen Proje: <strong className="text-white">{activeProject.title}</strong> ({activeProject.ownerName})
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowRadarModal(true)}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-lg shadow-blue-600/30"
+              >
+                <Activity className="h-4 w-4" />
+                <span>Tam Ekran Radarı Başlat</span>
+              </button>
+            </div>
+
+            {/* Project Switcher */}
+            <div className="flex items-center space-x-2 bg-slate-900 p-2 rounded-xl border border-slate-800">
+              <span className="text-xs text-slate-400 font-semibold px-2">İncelenecek Proje:</span>
+              {projects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedProjectId(p.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    selectedProjectId === p.id ? "bg-blue-600 text-white font-bold" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {p.projectKey} ({p.ownerName})
+                </button>
+              ))}
+            </div>
+
+            {/* Inline Radar Overview Card */}
+            <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="text-sm font-bold text-white flex items-center space-x-2">
+                  <Activity className="h-4 w-4 text-cyan-400" />
+                  <span>5 Eksenli Dağılım ve Konsensüs Durumu</span>
+                </div>
+                <div className="text-xs font-mono">
+                  {activeProject.juryReviews.length > 0 ? (
+                    <span className="text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded border border-emerald-800">
+                      {activeProject.juryReviews.length} Jüri Değerlendirmesi Mevcut
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 bg-slate-800 px-2.5 py-1 rounded">
+                      Henüz Jüri Değerlendirmesi Yok
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {activeProject.juryReviews.length === 0 ? (
+                <div className="p-10 rounded-xl bg-[#060a17] border border-dashed border-slate-800 text-center space-y-2">
+                  <Activity className="h-8 w-8 text-slate-600 mx-auto" />
+                  <div className="text-sm font-semibold text-slate-300">Bu proje için henüz girilmiş jüri puanı bulunmuyor</div>
+                  <p className="text-xs text-slate-500">
+                    Jüriler 100 Puanlık Rubrik üzerinden puanlama yaptıkça varyans radarı ve konsensüs çizgileri burada canlı olarak belirecektir.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-5 gap-3">
+                    {[
+                      { label: "Kod Kalitesi", max: 30, key: "codeQuality" },
+                      { label: "Güvenlik", max: 20, key: "security" },
+                      { label: "Performans", max: 20, key: "performance" },
+                      { label: "İşlevsellik", max: 20, key: "functionality" },
+                      { label: "Dokümantasyon", max: 10, key: "documentation" }
+                    ].map(axis => {
+                      const avg = activeProject.juryReviews.reduce((sum, r) => sum + (r.subScores as any)[axis.key], 0) / activeProject.juryReviews.length;
+                      return (
+                        <div key={axis.key} className="p-3 rounded-lg bg-[#060a17] border border-slate-800 text-center">
+                          <div className="text-[10px] text-slate-400">{axis.label}</div>
+                          <div className="text-lg font-bold font-mono text-cyan-400 mt-0.5">
+                            {avg.toFixed(1)} <span className="text-[10px] text-slate-500">/{axis.max}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="p-4 rounded-lg bg-[#060a17] border border-slate-800 flex items-center justify-between">
+                    <span className="text-xs text-slate-300">Detaylı 5 eksenli radar çokgeni ve eksen sapmalarını incelemek için:</span>
+                    <button
+                      onClick={() => setShowRadarModal(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold"
+                    >
+                      Grafiği Görüntüle
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 5. CTO OVERSIGHT TAB (Gökçenur Öztürk) */}
         {activeTab === "CTO_OVERSIGHT" && (
           <div className="max-w-4xl mx-auto space-y-6">
             <div>
@@ -1206,21 +1399,6 @@ export default function ReizevalDesktopApp() {
                 Tüm jürilerin bağımsız değerlendirmelerini inceleyin; Mustafa Çoban, Hülya Bulut veya Mustafa Dalerdem'in projelerini resmî olarak onaylayın.
               </p>
             </div>
-
-            {/* Non-CTO Security Notice */}
-            {currentUser.role !== "GLOBAL_CTO" && (
-              <div className="p-4 rounded-xl bg-amber-950/70 border border-amber-700/60 text-amber-200 text-xs flex items-center space-x-3 shadow-lg">
-                <AlertTriangle className="h-6 w-6 text-amber-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-amber-100 uppercase tracking-wider">
-                    Yalnızca Global CTO Yetkilidir (Gökçenur Öztürk)
-                  </div>
-                  <p className="mt-0.5 text-amber-300">
-                    Sistem ve jüri kararlarını resmî olarak onaylama ve başarı belgesi tescil etme yetkisi yalnızca Global CTO Gökçenur Öztürk makamına aittir. Şirket Kurucusu / CEO dahi olsa nihai onay veremez veya belge tescilini değiştiremez.
-                  </p>
-                </div>
-              </div>
-            )}
 
             <div className="space-y-4">
               {projects.map((proj) => (
@@ -1252,11 +1430,11 @@ export default function ReizevalDesktopApp() {
                         <div className="flex items-center space-x-2">
                           <span className="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-xs flex items-center space-x-1">
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>Onaylandı</span>
+                            <span>Resmî Onaylandı</span>
                           </span>
                           <button
                             onClick={() => handleOpenCertificate(proj)}
-                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center space-x-1"
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center space-x-1 shadow"
                           >
                             <Award className="h-3.5 w-3.5" />
                             <span>Yatay A4 Belge</span>
@@ -1265,24 +1443,10 @@ export default function ReizevalDesktopApp() {
                       ) : (
                         <button
                           onClick={() => handleCtoApproveProject(proj.id)}
-                          disabled={currentUser.role !== "GLOBAL_CTO"}
-                          className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center space-x-1.5 shadow transition-all ${
-                            currentUser.role !== "GLOBAL_CTO"
-                              ? "bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed"
-                              : "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer"
-                          }`}
+                          className="px-4 py-2 rounded-lg font-bold text-xs flex items-center space-x-1.5 shadow bg-blue-600 hover:bg-blue-500 text-white cursor-pointer active:scale-[0.98] transition-all"
                         >
-                          {currentUser.role !== "GLOBAL_CTO" ? (
-                            <>
-                              <Lock className="h-4 w-4 text-slate-500" />
-                              <span>Onay Yetkisi Global CTO'dadır</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck className="h-4 w-4" />
-                              <span>Global CTO Onayı Ver & Sertifika Üret</span>
-                            </>
-                          )}
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>Global CTO Onayı Ver & Sertifika Üret</span>
                         </button>
                       )}
                     </div>
@@ -1293,7 +1457,179 @@ export default function ReizevalDesktopApp() {
           </div>
         )}
 
-        {/* 4. PRIVATE 1-ON-1 MESSAGES (Geliştirici <-> Özel Jüri) */}
+        {/* 6. RESULTS & SCOREBOARD (Sonuçlar & Sıralama Masası) */}
+        {activeTab === "RESULTS" && (
+          <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
+                  <span>Resmî Değerlendirme Sonuçları ve Başarı Sıralaması</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded bg-blue-900/60 text-blue-300 font-mono font-semibold">
+                    Resmî Tescil
+                  </span>
+                </h1>
+                <p className="text-sm text-slate-400 mt-1">
+                  Tüm projelerin 12 bağımsız jüri puanları, Global CTO onay durumları ve resmî başarı belgeleri.
+                </p>
+              </div>
+
+              <button
+                onClick={() => syncProjectsAndMessages()}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                title="Sonuçları Yenile"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Sonuçları Yenile</span>
+              </button>
+            </div>
+
+            {/* Informative Banner */}
+            <div className="p-4 rounded-xl bg-blue-950/60 border border-blue-800/60 text-blue-200 text-xs flex items-center space-x-3 shadow-lg">
+              <Award className="h-6 w-6 text-amber-400 shrink-0" />
+              <div>
+                <div className="font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                  <span>Adil & Şeffaf Değerlendirme Esasları</span>
+                </div>
+                <p className="mt-1 text-slate-300 leading-relaxed">
+                  Projeler 12 bağımsız teknik jüri tarafından incelenir ve Global CTO Gökçenur Öztürk tarafından resmî olarak tescil edilir. Değerlendirmesi tamamlanan ve CTO onayı verilen katılımcılar, kazandıkları <strong>Yatay A4 Resmî Sertifikalarını</strong> bu ekrandan doğrudan görüntüleyebilir ve indirebilirler. Sonuçlar ilan edilene kadar belgeler kilitli tutulur.
+                </p>
+              </div>
+            </div>
+
+            {/* Scoreboard Cards */}
+            <div className="space-y-4">
+              {projects.map((proj, idx) => {
+                const isApproved = proj.status === "APPROVED_PUBLISHED";
+                return (
+                  <div
+                    key={proj.id}
+                    className={`p-5 rounded-xl border transition-all ${
+                      isApproved 
+                        ? "bg-slate-900/95 border-emerald-600/50 shadow-xl shadow-emerald-950/20" 
+                        : "bg-slate-900/70 border-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-3.5">
+                        <span className={`h-8 w-8 rounded-lg font-bold font-mono text-sm flex items-center justify-center shrink-0 ${
+                          idx === 0 
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" 
+                            : "bg-slate-800 text-slate-400"
+                        }`}>
+                          #{idx + 1}
+                        </span>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-bold text-blue-400 font-mono">{proj.projectKey}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-xs text-slate-400 font-medium">{proj.categoryName}</span>
+                          </div>
+
+                          <h3 className="text-base font-bold text-white">{proj.title}</h3>
+                          
+                          <div className="text-xs text-slate-300 flex items-center space-x-2">
+                            <span>Geliştirici: <strong className="text-white">{proj.ownerName}</strong> ({proj.ownerTitle})</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-slate-400 font-mono">{proj.archives.length} Arşiv Yüklü</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Score Display */}
+                      <div className="text-right">
+                        {proj.score !== null ? (
+                          <>
+                            <div className="text-2xl font-black font-mono text-emerald-400">
+                              {proj.score} <span className="text-sm font-normal text-slate-400">/ 100</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-medium">Nihai Puan</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-sm font-semibold text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded border border-amber-800/60">
+                              Değerlendirme Sürüyor
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1">Jüri Notu Bekleniyor</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Status & Certificate Action */}
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        {isApproved ? (
+                          <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold bg-emerald-950/80 px-2.5 py-1 rounded border border-emerald-800">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                            <span>Global CTO Onayı Verildi • Resmî Olarak Tescillendi</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center space-x-1.5 text-slate-400 font-medium bg-slate-800/80 px-2.5 py-1 rounded border border-slate-700/60">
+                            <Clock className="h-3.5 w-3.5 text-amber-400" />
+                            <span>Değerlendirme ve Hakemlik Aşaması Devam Ediyor</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        {isApproved ? (
+                          <button
+                            onClick={() => handleOpenCertificate(proj)}
+                            className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-amber-500/25 active:scale-[0.98] transition-all"
+                          >
+                            <Award className="h-4 w-4" />
+                            <span>Yatay A4 Resmî Sertifikayı Al</span>
+                          </button>
+                        ) : (
+                          <div 
+                            className="flex items-center space-x-2 text-xs text-slate-500 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 cursor-not-allowed"
+                            title="Global CTO Gökçenur Öztürk nihai onay verdikten sonra belgeniz açılacaktır."
+                          >
+                            <Lock className="h-3.5 w-3.5 text-slate-600" />
+                            <span>Sertifika Kilitli (Sonuçlar Açıklanınca Açılır)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 13 Official Certificate Standards Reference Grid */}
+            <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <Award className="h-4 w-4 text-amber-400" />
+                  <span>REİZMEDYA Resmî 13 Başarı ve Katılım Belgesi Standartları</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Her aday elde ettiği puana ve proje niteliğine (_WEB, _MOBİL, _OTOMASYON, Full-Stack) göre ilgili resmî belgeyi kazanır.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {Object.values(REIZEVAL_CERTIFICATES).map((cert, index) => (
+                  <div key={cert.code} className="p-3 rounded-lg bg-[#060a17] border border-slate-800/80 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-white text-[11px]">
+                      <span>{index + 1}. {cert.titleTr}</span>
+                      <span className="text-[9px] font-mono text-blue-400 bg-blue-950 px-1 py-0.5 rounded border border-blue-900">
+                        {cert.code}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">{cert.titleEn}</div>
+                    <div className="text-[10px] text-slate-500">
+                      Şart: <span className="text-slate-300">{cert.criteria}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 7. PRIVATE 1-ON-1 MESSAGES (Geliştirici <-> Özel Jüri) */}
         {activeTab === "MESSAGES" && (
           <div className="max-w-4xl mx-auto space-y-4">
             <div>
@@ -1371,72 +1707,6 @@ export default function ReizevalDesktopApp() {
           </div>
         )}
 
-        {/* 5. 13 RESMÎ SERTİFİKA LİSTESİ VE GÖRÜNTÜLEYİCİ */}
-        {activeTab === "CERTIFICATES" && (
-          <div className="max-w-5xl mx-auto space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center space-x-2">
-                <span>REİZMEDYA Resmî 13 Başarı ve Katılım Belgesi</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 font-mono">
-                  Puan ve Proje Kademelerine Göre Tescil
-                </span>
-              </h1>
-              <p className="text-sm text-slate-400 mt-1">
-                Tüm belgeler yatay A4 formatında, REİZMEDYA neon blue logolu, alınan tam puana ve proje kategorisine göre verilir; Global CTO Gökçenur Öztürk onaylıdır.
-              </p>
-            </div>
-
-            {/* Equal Opportunity & Dynamic Awarding Banner */}
-            <div className="p-4 rounded-xl bg-blue-950/70 border border-blue-700/60 text-blue-200 text-xs flex items-center space-x-3 shadow-lg">
-              <Award className="h-6 w-6 text-amber-400 shrink-0" />
-              <div>
-                <div className="font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-                  <span>Adil & Eşit Katılım İlkeleri: 13 Belge Herkes İçin Geçerlidir</span>
-                </div>
-                <p className="mt-1 text-slate-300 leading-relaxed">
-                  Bu 13 belge herhangi bir kişiye ipotekli değildir. Mustafa Çoban, Hülya Bulut, Mustafa Dalerdem veya sisteme dahil olacak herhangi bir geliştirici, sunduğu projenin niteliğine (_WEB, _MOBİL, _OTOMASYON, Full-Stack) ve 12 bağımsız jürinin vereceği tam puana göre hak ettiği tüm belgeleri alır. 1. olan ve 95-100 tam puan alan zirve katılımcı, en yüksek onur olan <strong>4. Takdir Belgesi</strong> ile birlikte tüm ilgili başarı belgelerini eksiksiz kazanır.
-                </p>
-              </div>
-            </div>
-
-            {/* Grid of all 13 Certificate Specs with Instant Preview */}
-            <div className="grid grid-cols-2 gap-3">
-              {Object.values(REIZEVAL_CERTIFICATES).map((cert, index) => (
-                <div key={cert.code} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between text-xs font-bold text-white">
-                      <span>{index + 1}. {cert.titleTr}</span>
-                      <span className="text-[10px] font-mono text-blue-400 bg-blue-950 px-1.5 py-0.5 rounded border border-blue-900">
-                        {cert.code}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">{cert.titleEn}</div>
-                    <div className="text-[10px] text-slate-400 mt-1">
-                      Şart: <span className="text-slate-300">{cert.criteria}</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-800 flex justify-end">
-                    <button
-                      onClick={() => setActiveCertData({
-                        title: cert.titleTr,
-                        recipientName: currentUser.fullName,
-                        recipientTitle: currentUser.title,
-                        projectTitle: activeProject.title,
-                        score: activeProject.score || 95,
-                        certificateNumber: `RZV-2026-${cert.code}-${Math.floor(Math.random() * 899999 + 100000)}`
-                      })}
-                      className="px-3 py-1.5 rounded-lg bg-blue-950 hover:bg-blue-900 border border-blue-700/60 text-blue-300 text-xs font-semibold flex items-center space-x-1"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      <span>Yatay A4 Olarak Gör</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </section>
     </div>
   );
