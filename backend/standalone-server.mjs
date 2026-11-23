@@ -395,6 +395,11 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 403, { error: 'Çıkar Çatışması Engeli: Kendi projenize puan veremezsiniz.' });
     }
 
+    // Block evaluation if no archives uploaded
+    if (!project.archives || project.archives.length === 0) {
+      return sendJson(res, 400, { error: 'Bu projeye henüz hiçbir kaynak kod veya ZIP/RAR arşivi yüklenmemiştir. Değerlendirme yapılamaz.' });
+    }
+
     const code = Number(body.codeQualityScore) || 0;
     const sec = Number(body.securityScore) || 0;
     const perf = Number(body.performanceScore) || 0;
@@ -462,6 +467,10 @@ const server = http.createServer(async (req, res) => {
       } else {
         return sendJson(res, 404, { error: 'Onaylanacak değerlendirme kaydı bulunamadı' });
       }
+    }
+
+    if (!targetProject.archives || targetProject.archives.length === 0) {
+      return sendJson(res, 400, { error: 'Kaynak kod arşivi (ZIP/RAR) yüklenmemiş bir projeye Global CTO onayı verilemez.' });
     }
 
     targetEval.isApprovedByCto = true;

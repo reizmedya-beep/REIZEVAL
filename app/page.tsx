@@ -114,8 +114,6 @@ function normalizeProject(p: any, idx: number): ProjectItem {
     ownerName: p.ownerName || (pKey === "PROJE_1" ? "Mustafa Çoban" : pKey === "PROJE_2" ? "Hülya Bulut" : "Mustafa Dalerdem"),
     ownerTitle: p.ownerTitle || (pKey === "PROJE_1" ? "Kurucu / CEO" : pKey === "PROJE_2" ? "CXO & CTO Yardımcısı" : "CIO / Akademi Başkanı"),
     currentStage: (pKey === "PROJE_2" ? "V3_FULL_STACK" : "INDEPENDENT") as any,
-    status: p.status || "READY_FOR_JURY",
-    score: score,
     archives: (p.archives || [])
       .filter((a: any) => !['arc-01', 'arc-02', 'arc-h01', 'arc-d01'].includes(a.id) && !a.fileName?.includes('Core-Source') && !a.fileName?.includes('Desktop-Binaries'))
       .map((a: any) => ({
@@ -127,6 +125,12 @@ function normalizeProject(p: any, idx: number): ProjectItem {
       sha256: a.sha256 || "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
       uploadedAt: a.uploadedAt ? new Date(a.uploadedAt).toLocaleString('tr-TR') : "21.11.2026"
     })),
+    status: ((p.archives || []).filter((a: any) => !['arc-01', 'arc-02', 'arc-h01', 'arc-d01'].includes(a.id) && !a.fileName?.includes('Core-Source') && !a.fileName?.includes('Desktop-Binaries')).length > 0)
+      ? (p.status || "READY_FOR_JURY")
+      : "AWAITING_SUBMISSION",
+    score: ((p.archives || []).filter((a: any) => !['arc-01', 'arc-02', 'arc-h01', 'arc-d01'].includes(a.id) && !a.fileName?.includes('Core-Source') && !a.fileName?.includes('Desktop-Binaries')).length > 0)
+      ? score
+      : null,
     juryReviews: (p.evaluations || []).map((ev: any) => ({
       id: ev.id,
       juryName: ev.juryName,
@@ -474,6 +478,12 @@ export default function ReizevalDesktopApp() {
       return;
     }
 
+    if (activeProject.archives.length === 0) {
+      setStatusMessage("ARŞİV EKSİK: Bu projeye henüz kaynak kod (ZIP/RAR) yüklenmediği için jüri puanı verilemez.");
+      alert("DEĞERLENDİRME YAPILAMAZ!\n\nBu projeye geliştirici tarafından henüz hiçbir kaynak kod veya ZIP/RAR arşivi yüklenmemiştir.\n\nLütfen önce ilgili geliştiricinin proje arşivini yüklemesini bekleyiniz.");
+      return;
+    }
+
     const juryNameToSubmit = currentUser.role === "TECHNICAL_JURY" ? currentUser.fullName : evaluatingJuryName;
 
     setStatusMessage("Puanlama ve rapor merkezi sunucuya kaydediliyor...");
@@ -506,6 +516,13 @@ export default function ReizevalDesktopApp() {
     if (!currentUser || currentUser.role !== "GLOBAL_CTO") {
       setStatusMessage("YETKİSİZ İŞLEM (403 Forbidden): Belge ve nihai puan onay yetkisi yalnızca Global CTO Gökçenur Öztürk yetkisindedir.");
       alert("YETKİSİZ İŞLEM (HTTP 403 Forbidden)\n\nBelge ve nihai puan onay yetkisi yalnızca Global CTO Gökçenur Öztürk yetkisindedir.");
+      return;
+    }
+
+    const targetProj = projects.find(p => p.id === projId);
+    if (targetProj && targetProj.archives.length === 0) {
+      setStatusMessage("ARŞİV EKSİK: Bu projeye henüz kaynak kod veya ZIP arşivi yüklenmediği için Global CTO onayı verilemez.");
+      alert("ONAY VERİLEMEZ!\n\nBu projeye henüz hiçbir kaynak kod veya ZIP/RAR arşivi yüklenmemiştir.\n\nResmî tescil ve sertifika üretimi için önce projenin teslim edilmesi gereklidir.");
       return;
     }
 
@@ -843,9 +860,15 @@ export default function ReizevalDesktopApp() {
                 <div className={`text-xs font-mono font-bold px-3 py-1.5 rounded-lg border ${
                   myProject.score 
                     ? "bg-emerald-950/80 text-emerald-300 border-emerald-700" 
-                    : "bg-blue-950/80 text-blue-300 border-blue-800"
+                    : myProject.archives.length === 0
+                      ? "bg-slate-900 text-slate-400 border-slate-800"
+                      : "bg-amber-950/80 text-amber-300 border-amber-800"
                 }`}>
-                  {myProject.score ? `${myProject.score} / 100 Puan (Değerlendirildi)` : "Jüri İncelemesi Bekleniyor"}
+                  {myProject.score 
+                    ? `${myProject.score} / 100 Puan (Değerlendirildi)` 
+                    : myProject.archives.length === 0
+                      ? "Arşiv Yüklemeniz Bekleniyor"
+                      : "Jüri İncelemesi Sürüyor"}
                 </div>
               </div>
             </div>
@@ -1044,9 +1067,17 @@ export default function ReizevalDesktopApp() {
                     <div className="flex items-center justify-between text-[11px] font-bold">
                       <span className="text-blue-400">{p.projectKey}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        p.score ? "bg-emerald-950 text-emerald-400 border border-emerald-800" : "bg-slate-800 text-slate-400"
+                        p.score 
+                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800" 
+                          : p.archives.length === 0
+                            ? "bg-slate-900 text-slate-400 border border-slate-800"
+                            : "bg-amber-950 text-amber-300 border border-amber-800"
                       }`}>
-                        {p.score ? `${p.score} / 100 Puan` : "İnceleniyor"}
+                        {p.score 
+                          ? `${p.score} / 100 Puan` 
+                          : p.archives.length === 0
+                            ? "Arşiv Bekleniyor"
+                            : "Jüri İnceliyor"}
                       </span>
                     </div>
 
@@ -1218,6 +1249,19 @@ export default function ReizevalDesktopApp() {
                 </select>
               </div>
             </div>
+
+            {/* If 0 archives, display warning banner */}
+            {activeProject.archives.length === 0 && (
+              <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs flex items-center space-x-3 shadow-lg">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+                <div>
+                  <div className="font-bold text-white uppercase tracking-wider">KAYNAK KOD / ARŞİV HENÜZ YÜKLENMEDİ</div>
+                  <p className="mt-0.5 text-slate-300 leading-relaxed">
+                    Bu projeye ({activeProject.title}) henüz geliştirici tarafından kaynak kod (ZIP/RAR) arşivi yüklenmemiştir. Jürilerin objektif değerlendirme yapabilmesi için arşiv yüklenmesi zorunludur.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Rubric Form */}
             <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 space-y-5 shadow-xl">
@@ -1583,8 +1627,18 @@ export default function ReizevalDesktopApp() {
                       </div>
 
                       <div className="text-right">
-                        <div className="text-xl font-bold font-mono text-emerald-400">
-                          {proj.score !== null ? `${proj.score} / 100` : "Jüri İnceliyor"}
+                        <div className={`text-xl font-bold font-mono ${
+                          proj.score !== null 
+                            ? "text-emerald-400" 
+                            : proj.archives.length === 0 
+                              ? "text-slate-500 text-sm" 
+                              : "text-amber-400 text-sm"
+                        }`}>
+                          {proj.score !== null 
+                            ? `${proj.score} / 100` 
+                            : proj.archives.length === 0 
+                              ? "Arşiv Yüklenmedi" 
+                              : "Jüri İnceliyor"}
                         </div>
                         <div className="text-[10px] text-slate-400">Hesaplanan Skor</div>
                       </div>
@@ -1625,6 +1679,14 @@ export default function ReizevalDesktopApp() {
                               <span>Yatay A4 Belge</span>
                             </button>
                           </>
+                        ) : proj.archives.length === 0 ? (
+                          <div
+                            className="px-3.5 py-2 rounded-lg font-medium text-xs flex items-center space-x-1.5 bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed"
+                            title="Kaynak kod arşivi yüklenmeden onay verilemez"
+                          >
+                            <Lock className="h-3.5 w-3.5 text-slate-600" />
+                            <span>Arşiv Yüklenmesi Bekleniyor</span>
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleCtoApproveProject(proj.id)}
@@ -1854,9 +1916,15 @@ export default function ReizevalDesktopApp() {
 
                           {/* Archives */}
                           <td className="py-4 px-4 text-center">
-                            <span className="font-mono text-xs text-slate-300 bg-slate-800 px-2 py-1 rounded">
-                              {proj.archives.length} ZIP/RAR
-                            </span>
+                            {proj.archives.length > 0 ? (
+                              <span className="font-mono text-xs text-slate-200 bg-slate-800 px-2 py-1 rounded border border-slate-700">
+                                {proj.archives.length} ZIP/RAR
+                              </span>
+                            ) : (
+                              <span className="font-mono text-[11px] text-slate-500 bg-slate-900/80 px-2 py-1 rounded border border-slate-800">
+                                0 Arşiv
+                              </span>
+                            )}
                           </td>
 
                           {/* Jury Score */}
@@ -1868,9 +1936,13 @@ export default function ReizevalDesktopApp() {
                                 </span>
                                 <span className="text-[10px] text-slate-500"> / 100</span>
                               </div>
+                            ) : proj.archives.length === 0 ? (
+                              <span className="text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-[11px] font-medium">
+                                Arşiv Yüklenmedi
+                              </span>
                             ) : (
                               <span className="text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 text-[11px] font-semibold">
-                                İnceleniyor
+                                Jüri İnceliyor
                               </span>
                             )}
                           </td>
@@ -1881,6 +1953,11 @@ export default function ReizevalDesktopApp() {
                               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[11px]">
                                 <CheckCircle2 className="h-3 w-3" />
                                 <span>Onaylandı</span>
+                              </span>
+                            ) : proj.archives.length === 0 ? (
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-500 text-[11px]">
+                                <Clock className="h-3 w-3 text-slate-600" />
+                                <span>Teslim Bekleniyor</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 text-[11px]">
