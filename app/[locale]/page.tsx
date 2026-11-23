@@ -226,7 +226,7 @@ export default function ReizevalDesktopApp() {
     }
   ]);
   const [chatInputText, setChatInputText] = useState("");
-  const [activeApiUrl, setActiveApiUrl] = useState<string>("http://127.0.0.1:4000");
+  const [activeApiUrl, setActiveApiUrl] = useState<string>("https://reizeval-api.onrender.com");
 
   useEffect(() => {
     setActiveApiUrl(apiClient.getBaseUrl());

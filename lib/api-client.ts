@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = process.env.NEXT_PUBLIC_CENTRAL_API_URL || 'http://127.0.0.1:4000';
+const DEFAULT_API_URL = process.env.NEXT_PUBLIC_CENTRAL_API_URL || 'https://reizeval-api.onrender.com';
 
 class ReizevalApiClient {
   private token: string | null = null;

@@ -6,7 +6,7 @@ import { checkDesktopVersion } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
-const CENTRAL_API_URL = process.env.NEXT_PUBLIC_CENTRAL_API_URL || 'http://127.0.0.1:4000';
+const CENTRAL_API_URL = process.env.NEXT_PUBLIC_CENTRAL_API_URL || 'https://reizeval-api.onrender.com';
 
 async function createWindow() {
   // Start or bind the internal Next.js standalone server
