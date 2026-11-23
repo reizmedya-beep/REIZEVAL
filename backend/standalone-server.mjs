@@ -264,13 +264,15 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   const pathname = url.pathname;
 
-  // 1. Health
-  if (pathname === '/health' && req.method === 'GET') {
+  // 1. Root & Health
+  if ((pathname === '/health' || pathname === '/') && req.method === 'GET') {
     return sendJson(res, 200, {
       status: 'healthy',
-      engine: 'REIZEVAL Standalone Native Node Engine (Zero-Dependencies)',
+      service: 'REIZEVAL Central Cloud API (REİZMEDYA)',
+      description: 'Headless Backend API for Windows 64-bit Desktop Application',
       activeUsers: users.size,
       activeProjects: projects.size,
+      message: 'Merkezi API 7/24 kesintisiz çalışıyor 🟢. Platforma erişmek için lütfen REIZEVAL Windows masaüstü uygulamasını açınız.',
       timestamp: new Date().toISOString()
     });
   }
