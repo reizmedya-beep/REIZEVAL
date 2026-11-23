@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Sliders, ShieldAlert, CheckCircle2, Award, Sparkles, X } from "lucide-react";
+import { Sliders, ShieldAlert, CheckCircle2, Award, Sparkles, X, AlertCircle } from "lucide-react";
 
 interface RadarVarianceChartProps {
   projectName: string;
@@ -24,24 +24,13 @@ export function RadarVarianceChart({
   juriesData,
   onClose
 }: RadarVarianceChartProps) {
-  // If no data, use sample benchmark
-  const data = juriesData.length >= 2 ? juriesData : [
-    {
-      name: "Gaspare LoDuca",
-      totalScore: 95,
-      scores: { codeQuality: 29, security: 20, performance: 19, functionality: 19, documentation: 8 }
-    },
-    {
-      name: "Olu Brown",
-      totalScore: 92,
-      scores: { codeQuality: 27, security: 19, performance: 18, functionality: 19, documentation: 9 }
-    }
-  ];
+  const hasData = juriesData && juriesData.length > 0;
+  const data = juriesData || [];
 
   // Calculate Variance
-  const maxScore = Math.max(...data.map(d => d.totalScore));
-  const minScore = Math.min(...data.map(d => d.totalScore));
-  const variance = maxScore - minScore;
+  const maxScore = hasData ? Math.max(...data.map(d => d.totalScore)) : 0;
+  const minScore = hasData ? Math.min(...data.map(d => d.totalScore)) : 0;
+  const variance = hasData ? maxScore - minScore : 0;
   const isDisputed = variance > 15;
 
   // Normalized values for 5 axes (0 to 1)
@@ -82,11 +71,13 @@ export function RadarVarianceChart({
             <div>
               <h2 className="text-base font-bold text-white flex items-center space-x-2">
                 <span>5 Eksenli Çoklu Jüri Varyans ve Konsensüs Radarı</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
-                  isDisputed ? "bg-rose-950 text-rose-400 border border-rose-800" : "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                }`}>
-                  {isDisputed ? "UYUŞMAZLIK MEVCUT" : "KONSENSÜS TAM"}
-                </span>
+                {hasData && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
+                    isDisputed ? "bg-rose-950 text-rose-400 border border-rose-800" : "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                  }`}>
+                    {isDisputed ? "UYUŞMAZLIK MEVCUT" : "KONSENSÜS TAM"}
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-400">
                 İncelenen Proje: <strong className="text-slate-200">{projectName}</strong>
@@ -97,125 +88,122 @@ export function RadarVarianceChart({
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
 
-        {/* Content: Radar SVG + Stats */}
-        <div className="grid grid-cols-2 gap-6 items-center">
-          {/* Radar Chart SVG */}
-          <div className="flex items-center justify-center relative">
-            <svg width="320" height="320" className="overflow-visible">
-              {/* Background web rings */}
-              {[0.25, 0.5, 0.75, 1].map((step, ringIdx) => {
-                const ringPoints = axes.map((_, i) => {
+        {/* Content */}
+        {!hasData ? (
+          <div className="p-12 text-center flex flex-col items-center justify-center space-y-3 bg-slate-900/40 rounded-xl border border-slate-800">
+            <AlertCircle className="h-10 w-10 text-blue-400/60" />
+            <div className="text-sm font-bold text-white">Henüz Jüri Değerlendirmesi Bulunmuyor</div>
+            <p className="text-xs text-slate-400 max-w-md">
+              Bu proje için bağımsız jüriler tarafından henüz puan verilmedi. 
+              Jüri üyeleri 100 puanlık rubrik üzerinden değerlendirme kaydettiğinde varyans radarı ve konsensüs analizi canlı olarak hesaplanacaktır.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-6 items-center">
+            {/* Radar Chart SVG */}
+            <div className="flex items-center justify-center relative">
+              <svg width="320" height="320" className="overflow-visible">
+                {/* Background web rings */}
+                {[0.25, 0.5, 0.75, 1].map((step, ringIdx) => {
+                  const ringPoints = axes.map((_, i) => {
+                    const angle = (Math.PI * 2 / axes.length) * i - Math.PI / 2;
+                    const r = radius * step;
+                    return `${centerX + r * Math.cos(angle)},${centerY + r * Math.sin(angle)}`;
+                  }).join(" ");
+                  return (
+                    <polygon
+                      key={ringIdx}
+                      points={ringPoints}
+                      fill="none"
+                      stroke="#1e293b"
+                      strokeWidth="1"
+                      strokeDasharray={step < 1 ? "2 2" : "none"}
+                    />
+                  );
+                })}
+
+                {/* Axis lines */}
+                {axes.map((axis, i) => {
                   const angle = (Math.PI * 2 / axes.length) * i - Math.PI / 2;
-                  const r = radius * step;
-                  return `${centerX + r * Math.cos(angle)},${centerY + r * Math.sin(angle)}`;
-                }).join(" ");
-                return (
-                  <polygon
-                    key={ringIdx}
-                    points={ringPoints}
-                    fill="none"
-                    stroke="#1e293b"
-                    strokeWidth="1"
-                    strokeDasharray={step < 1 ? "2 2" : "none"}
-                  />
-                );
-              })}
+                  const x = centerX + radius * Math.cos(angle);
+                  const y = centerY + radius * Math.sin(angle);
+                  return (
+                    <g key={i}>
+                      <line x1={centerX} y1={centerY} x2={x} y2={y} stroke="#1e293b" strokeWidth="1" />
+                      <text
+                        x={centerX + (radius + 18) * Math.cos(angle)}
+                        y={centerY + (radius + 18) * Math.sin(angle)}
+                        fill="#94a3b8"
+                        fontSize="9"
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        {axis.label}
+                      </text>
+                    </g>
+                  );
+                })}
 
-              {/* Axis lines */}
-              {axes.map((axis, i) => {
-                const angle = (Math.PI * 2 / axes.length) * i - Math.PI / 2;
-                const x = centerX + radius * Math.cos(angle);
-                const y = centerY + radius * Math.sin(angle);
-                return (
-                  <g key={i}>
-                    <line x1={centerX} y1={centerY} x2={x} y2={y} stroke="#1e293b" strokeWidth="1" />
-                    <text
-                      x={centerX + (radius + 18) * Math.cos(angle)}
-                      y={centerY + (radius + 14) * Math.sin(angle)}
-                      textAnchor="middle"
-                      fill="#94a3b8"
-                      fontSize="9"
-                      fontFamily="monospace"
-                      dominantBaseline="central"
-                    >
-                      {axis.label}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Jury 1 Polygon (Blue) */}
-              <polygon
-                points={getPolygonPoints(data[0].scores)}
-                fill="rgba(59, 130, 246, 0.25)"
-                stroke="#3b82f6"
-                strokeWidth="2"
-              />
-
-              {/* Jury 2 Polygon (Amber) */}
-              {data[1] && (
-                <polygon
-                  points={getPolygonPoints(data[1].scores)}
-                  fill="rgba(245, 158, 11, 0.25)"
-                  stroke="#f59e0b"
-                  strokeWidth="2"
-                />
-              )}
-            </svg>
-          </div>
-
-          {/* Variance Breakdown & Arbitration */}
-          <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-slate-300">Jüriler Arası Puan Farkı:</span>
-                <span className={`font-mono text-sm font-bold ${isDisputed ? "text-rose-400" : "text-emerald-400"}`}>
-                  Δ {variance} Puan
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {isDisputed 
-                  ? "Puan farkı 15'ten büyüktür. Sistem otomatik olarak Global CTO Gökçenur Öztürk'ün hakemlik masasına sevk etmiştir."
-                  : "Puanlar birbirine son derece yakındır (Varyans < 15). Otomatik konsensüs sağlanmıştır."}
-              </div>
+                {/* Dynamic Polygons for Juries */}
+                {data.map((j, idx) => {
+                  const colors = [
+                    { stroke: "#3b82f6", fill: "rgba(59, 130, 246, 0.25)" },
+                    { stroke: "#10b981", fill: "rgba(16, 185, 129, 0.25)" },
+                    { stroke: "#a855f7", fill: "rgba(168, 85, 247, 0.25)" },
+                    { stroke: "#f59e0b", fill: "rgba(245, 158, 11, 0.25)" }
+                  ];
+                  const c = colors[idx % colors.length];
+                  return (
+                    <polygon
+                      key={idx}
+                      points={getPolygonPoints(j.scores)}
+                      stroke={c.stroke}
+                      fill={c.fill}
+                      strokeWidth="2"
+                    />
+                  );
+                })}
+              </svg>
             </div>
 
-            {/* Juries comparison list */}
-            <div className="space-y-2">
-              {data.map((j, i) => (
-                <div key={j.name} className="p-3 rounded-lg bg-[#0a1128] border border-blue-900/40 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className={`h-3 w-3 rounded-full ${i === 0 ? "bg-blue-500" : "bg-amber-500"}`} />
-                    <span className="font-semibold text-white">{j.name}</span>
-                  </div>
-                  <span className="font-mono text-emerald-400 font-bold">{j.totalScore} / 100 Puan</span>
+            {/* Stats Panel */}
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Jüri Skor Dağılımı ve Konsensüs
                 </div>
-              ))}
-            </div>
 
-            <div className="text-[10px] text-slate-500 italic">
-              * Global CTO Gökçenur Öztürk uyuşmazlık durumunda her kriterin puanına doğrudan override yetkisine sahiptir.
+                <div className="space-y-2">
+                  {data.map((j, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 font-semibold">{j.name}:</span>
+                      <span className="font-mono text-emerald-400 font-bold">{j.totalScore} / 100</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800 flex justify-between text-xs">
+                  <span className="text-slate-400">Maksimum Varyans Farkı:</span>
+                  <span className={`font-mono font-bold ${isDisputed ? "text-rose-400" : "text-emerald-400"}`}>
+                    {variance} Puan ({isDisputed ? "Uyuşmazlık" : "Uyumlu"})
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Footer */}
-        <div className="flex justify-end pt-3 border-t border-slate-800">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
-          >
-            Tamam
-          </button>
+        <div className="text-center text-[10px] text-slate-500 pt-2 border-t border-slate-900">
+          REIZEVAL Kurumsal Değerlendirme Standardı • 100 Puanlık Objektif Rubrik
         </div>
-
       </div>
     </div>
   );

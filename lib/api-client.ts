@@ -96,6 +96,13 @@ class ReizevalApiClient {
     });
   }
 
+  // Delete Archive
+  async deleteArchive(projectId: string, archiveId: string) {
+    return this.request<{ success: boolean; project: any }>(`/api/v1/projects/${projectId}/archives/${archiveId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Jury Evaluation (100 pts)
   async submitEvaluation(projectId: string, rubric: {
     codeQualityScore: number;

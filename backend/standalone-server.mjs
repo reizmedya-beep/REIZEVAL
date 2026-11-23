@@ -108,10 +108,7 @@ const initialProjects = [
     ownerName: 'Mustafa Çoban',
     ownerTitle: 'Kurucu / CEO',
     createdAt: '2026-11-21T09:00:00.000Z',
-    archives: [
-      { id: 'arc-01', fileName: 'REIZEVAL-Core-Source-v1.0.zip', fileSizeBytes: 471859200, sizeFormatted: '450.00 MB', sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', format: 'ZIP', category: 'SOURCE_CODE', uploadedAt: '2026-11-21T09:10:00.000Z' },
-      { id: 'arc-02', fileName: 'REIZEVAL-Desktop-Binaries-v1.0.zip', fileSizeBytes: 1288490188, sizeFormatted: '1.20 GB', sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', format: 'ZIP', category: 'ASSETS', uploadedAt: '2026-11-21T09:15:00.000Z' }
-    ],
+    archives: [],
     evaluations: []
   },
   {
@@ -126,9 +123,7 @@ const initialProjects = [
     ownerName: 'Hülya Bulut',
     ownerTitle: 'CXO & CTO Yardımcısı',
     createdAt: '2026-11-21T10:00:00.000Z',
-    archives: [
-      { id: 'arc-h01', fileName: 'REIZ-Security-Core.zip', fileSizeBytes: 314572800, sizeFormatted: '300.00 MB', sha256: 'a1b2c3d4e5f60718293a4b5c6d7e8f901234567890abcdef1234567890abcdef', format: 'ZIP', category: 'SOURCE_CODE', uploadedAt: '2026-11-21T10:15:00.000Z' }
-    ],
+    archives: [],
     evaluations: []
   },
   {
@@ -143,9 +138,7 @@ const initialProjects = [
     ownerName: 'Mustafa Dalerdem',
     ownerTitle: 'CIO / Akademi ve Ekosistem Başkanı',
     createdAt: '2026-11-21T11:00:00.000Z',
-    archives: [
-      { id: 'arc-d01', fileName: 'REIZ-Academy-Portal.zip', fileSizeBytes: 209715200, sizeFormatted: '200.00 MB', sha256: 'b2c3d4e5f6a10718293a4b5c6d7e8f901234567890abcdef1234567890abcdef', format: 'ZIP', category: 'SOURCE_CODE', uploadedAt: '2026-11-21T11:20:00.000Z' }
-    ],
+    archives: [],
     evaluations: []
   }
 ];
@@ -177,6 +170,7 @@ function loadFromDisk() {
       const parsed = JSON.parse(raw);
       if (parsed.projects) {
         for (const [k, v] of parsed.projects) {
+          v.archives = (v.archives || []).filter(a => !['arc-01', 'arc-02', 'arc-h01', 'arc-d01'].includes(a.id));
           projects.set(k, v);
         }
       }
@@ -362,6 +356,19 @@ const server = http.createServer(async (req, res) => {
 
     project.archives.push(...newArchives);
     project.status = 'READY_FOR_JURY';
+    persistToDisk();
+    return sendJson(res, 200, { success: true, project });
+  }
+
+  // 6.1 Delete Archive
+  if (pathname.includes('/archives/') && req.method === 'DELETE') {
+    const parts = pathname.split('/');
+    const projectId = parts[4];
+    const archiveId = parts[6];
+    const project = projects.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Proje bulunamadı' });
+
+    project.archives = (project.archives || []).filter(a => a.id !== archiveId);
     persistToDisk();
     return sendJson(res, 200, { success: true, project });
   }

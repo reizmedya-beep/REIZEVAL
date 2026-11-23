@@ -109,7 +109,9 @@ function normalizeProject(p: any, idx: number): ProjectItem {
     currentStage: (pKey === "PROJE_2" ? "V3_FULL_STACK" : "INDEPENDENT") as any,
     status: p.status || "READY_FOR_JURY",
     score: score,
-    archives: (p.archives || []).map((a: any) => ({
+    archives: (p.archives || [])
+      .filter((a: any) => !['arc-01', 'arc-02', 'arc-h01', 'arc-d01'].includes(a.id) && !a.fileName?.includes('Core-Source') && !a.fileName?.includes('Desktop-Binaries'))
+      .map((a: any) => ({
       id: a.id || `arc-${Math.random()}`,
       fileName: a.fileName,
       sizeFormatted: a.sizeFormatted || `${((a.fileSizeBytes || 0) / (1024 * 1024)).toFixed(2)} MB`,
@@ -285,20 +287,18 @@ export default function ReizevalDesktopApp() {
   };
 
   // Jury Rubric Grading State (100 Base + Sub-module Extra Scores)
-  const [codeQuality, setCodeQuality] = useState(28); // 30
-  const [securityScore, setSecurityScore] = useState(19); // 20
-  const [performanceScore, setPerformanceScore] = useState(19); // 20
-  const [functionalityScore, setFunctionalityScore] = useState(19); // 20
-  const [documentationScore, setDocumentationScore] = useState(9); // 10
+  const [codeQuality, setCodeQuality] = useState(25); // 30
+  const [securityScore, setSecurityScore] = useState(18); // 20
+  const [performanceScore, setPerformanceScore] = useState(18); // 20
+  const [functionalityScore, setFunctionalityScore] = useState(18); // 20
+  const [documentationScore, setDocumentationScore] = useState(8); // 10
   
   // PROJE_2 Specific Extra Sub-scores:
-  const [webBonus, setWebBonus] = useState(8); // max 10
-  const [mobileBonus, setMobileBonus] = useState(9); // max 10
-  const [automationBonus, setAutomationBonus] = useState(8); // max 10
+  const [webBonus, setWebBonus] = useState(0); // max 10
+  const [mobileBonus, setMobileBonus] = useState(0); // max 10
+  const [automationBonus, setAutomationBonus] = useState(0); // max 10
 
-  const [juryCommentEn, setJuryCommentEn] = useState(
-    "The staged development (V1, V2, V3) was executed flawlessly. The extra _MOBİL frontend and _OTOMASYON scripts add substantial value to the full stack suite."
-  );
+  const [juryCommentEn, setJuryCommentEn] = useState("");
 
   const baseTotalScore = codeQuality + securityScore + performanceScore + functionalityScore + documentationScore;
   const finalCalculatedScore = activeProject.projectKey === "PROJE_2"
@@ -340,17 +340,23 @@ export default function ReizevalDesktopApp() {
   };
 
   // Delete Archive
-  const handleDeleteArchive = (arcId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProject.id) {
-        return {
-          ...p,
-          archives: p.archives.filter(a => a.id !== arcId)
-        };
-      }
-      return p;
-    }));
-    setStatusMessage("Arşiv başarıyla silindi.");
+  const handleDeleteArchive = async (arcId: string) => {
+    try {
+      await apiClient.deleteArchive(activeProject.id, arcId);
+      await syncProjectsAndMessages();
+      setStatusMessage("Arşiv merkezi sunucudan başarıyla silindi.");
+    } catch (err: any) {
+      setProjects(prev => prev.map(p => {
+        if (p.id === activeProject.id) {
+          return {
+            ...p,
+            archives: p.archives.filter(a => a.id !== arcId)
+          };
+        }
+        return p;
+      }));
+      setStatusMessage("Arşiv silindi.");
+    }
   };
 
   // Jury Submits Evaluation (Strict Anti-Tamper RBAC)
@@ -508,18 +514,21 @@ export default function ReizevalDesktopApp() {
       {showRadarModal && (
         <RadarVarianceChart
           projectName={activeProject.title}
-          juriesData={[
-            {
-              name: "Gaspare LoDuca",
-              totalScore: activeProject.score || 95,
-              scores: { codeQuality: 29, security: 20, performance: 19, functionality: 19, documentation: 8 }
-            },
-            {
-              name: "Olu Brown",
-              totalScore: (activeProject.score || 95) - 3,
-              scores: { codeQuality: 27, security: 19, performance: 18, functionality: 19, documentation: 9 }
-            }
-          ]}
+          juriesData={
+            activeProject.juryReviews.length > 0 
+              ? activeProject.juryReviews.map(r => ({
+                  name: r.juryName,
+                  totalScore: r.score,
+                  scores: {
+                    codeQuality: r.subScores.codeQuality,
+                    security: r.subScores.security,
+                    performance: r.subScores.performance,
+                    functionality: r.subScores.functionality,
+                    documentation: r.subScores.documentation
+                  }
+                }))
+              : []
+          }
           onClose={() => setShowRadarModal(false)}
         />
       )}
@@ -581,47 +590,6 @@ export default function ReizevalDesktopApp() {
             >
               <LogOut className="h-3.5 w-3.5 text-rose-400" />
               <span>Oturumu Kapat (Çıkış)</span>
-            </button>
-          </div>
-
-          {/* Dual-Engine Central API & Tunnel Network Status */}
-          <div className="p-2.5 rounded-xl bg-slate-900/90 border border-blue-900/50 space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <span className="flex items-center space-x-1">
-                <Globe2 className="h-3 w-3 text-cyan-400" />
-                <span>Merkezi Ağ Köprüsü</span>
-              </span>
-              <span className={`h-2 w-2 rounded-full ${
-                activeApiUrl.includes('127.0.0.1') || activeApiUrl.includes('localhost') 
-                  ? 'bg-blue-400' 
-                  : activeApiUrl.includes('ngrok') 
-                    ? 'bg-amber-400' 
-                    : 'bg-emerald-400'
-              } animate-pulse`} />
-            </div>
-
-            <div className="text-[10px] font-mono text-slate-300 truncate bg-[#060a17] p-1.5 rounded border border-slate-800" title={activeApiUrl}>
-              {activeApiUrl}
-            </div>
-
-            <button
-              onClick={() => {
-                const nextUrl = window.prompt(
-                  "Merkezi Bulut API veya Güvenli Tünel adresini giriniz:\n(Örn: https://reizeval-api.onrender.com veya https://xxxx.ngrok-free.app veya http://127.0.0.1:4000):",
-                  activeApiUrl
-                );
-                if (nextUrl !== null) {
-                  const cleaned = nextUrl.trim();
-                  apiClient.setBaseUrl(cleaned || null);
-                  const updated = apiClient.getBaseUrl();
-                  setActiveApiUrl(updated);
-                  setStatusMessage(`Merkezi API sunucu adresi başarıyla güncellendi: ${updated}`);
-                }
-              }}
-              className="w-full text-center py-1 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 font-semibold border border-slate-700 transition-colors flex items-center justify-center space-x-1"
-            >
-              <Settings className="h-3 w-3" />
-              <span>Ağ / Sunucu Değiştir</span>
             </button>
           </div>
 
@@ -707,7 +675,7 @@ export default function ReizevalDesktopApp() {
               <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center flex flex-col items-center justify-center space-y-3">
                 <RefreshCw className="h-6 w-6 text-blue-400 animate-spin" />
                 <div className="text-sm font-semibold text-white">Merkezi Veritabanından Projeler Çekiliyor...</div>
-                <div className="text-xs text-slate-500 font-mono">https://reizeval-api.onrender.com/api/v1/projects</div>
+                <div className="text-xs text-slate-500">Güvenli Veri Akışı Doğrulanıyor...</div>
               </div>
             ) : projects.length === 0 ? (
               <div className="p-8 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
@@ -1187,7 +1155,12 @@ export default function ReizevalDesktopApp() {
                 Bu Proje İçin Verilen Jüri Değerlendirmeleri ({activeProject.juryReviews.length})
               </h3>
 
-              {activeProject.juryReviews.map((rev) => {
+              {activeProject.juryReviews.length === 0 ? (
+                <div className="p-6 rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-center text-xs text-slate-400">
+                  Bu proje için henüz girilmiş jüri değerlendirmesi bulunmuyor.
+                </div>
+              ) : (
+                activeProject.juryReviews.map((rev) => {
                 const isTr = translatedReviews[rev.id] || false;
                 return (
                   <div key={rev.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">

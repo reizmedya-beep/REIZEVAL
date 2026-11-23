@@ -92,25 +92,6 @@ export function AuthLoginPortal({
           <p className="text-xs text-slate-400 font-medium tracking-tight">
             Global Project Assessment Platform — Kurumsal Giriş Portalı
           </p>
-
-          {/* Central API Link Pill */}
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-slate-400">Merkezi API:</span>
-            <span className="font-mono text-cyan-400 truncate max-w-[220px]" title={activeApiUrl}>
-              {activeApiUrl}
-            </span>
-            <button
-              onClick={() => {
-                const nextUrl = window.prompt("Merkezi API veya Tünel adresini girin:", activeApiUrl);
-                if (nextUrl !== null && nextUrl.trim()) onUpdateApiUrl(nextUrl.trim());
-              }}
-              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors"
-              title="Sunucu Adresini Değiştir"
-            >
-              <Settings className="h-3 w-3" />
-            </button>
-          </div>
         </div>
 
         {/* Error Alert */}
